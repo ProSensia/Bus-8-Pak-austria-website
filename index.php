@@ -343,7 +343,8 @@ if ($result->num_rows > 0) {
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
                                 if ($seat['passenger_name']) {
-                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                    $first_name = explode(' ', $seat['passenger_name'])[0];
+                                    echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
                                 }
                             }
                             echo '</div>';
@@ -368,7 +369,8 @@ if ($result->num_rows > 0) {
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
                                 if ($seat['passenger_name']) {
-                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                    $first_name = explode(' ', $seat['passenger_name'])[0];
+                                    echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
                                 }
                             }
                             echo '</div>';
@@ -393,7 +395,8 @@ if ($result->num_rows > 0) {
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
                                 if ($seat['passenger_name']) {
-                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                    $first_name = explode(' ', $seat['passenger_name'])[0];
+                                    echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
                                 }
                             }
                             echo '</div>';
@@ -419,7 +422,8 @@ if ($result->num_rows > 0) {
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
                                 if ($seat['passenger_name']) {
-                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                    $first_name = explode(' ', $seat['passenger_name'])[0];
+                                    echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
                                 }
                             }
                             echo '</div>';
