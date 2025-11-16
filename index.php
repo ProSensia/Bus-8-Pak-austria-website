@@ -256,13 +256,7 @@ if ($result->num_rows > 0) {
                 </div>
             </div>
 
-            <!-- Bus Layout -->
-            <div class="driver-section">
-                <i class="fas fa-user-tie fa-2x"></i>
-                <p class="mt-2">Driver</p>
-            </div>
-
-            // In your PHP file, replace the seat generation section with this:
+            
 
             <div class="bus-grid">
                 <?php
