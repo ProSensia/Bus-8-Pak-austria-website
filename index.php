@@ -308,7 +308,7 @@ if ($result->num_rows > 0) {
                                 echo '<i class="fas fa-lock"></i>';
                                 if ($seat['passenger_name']) {
                                     $first_name = explode(' ', $seat['passenger_name'])[0];
-                                    echo '<div class="passenger-name">' . $first_name . '</div>';
+                                    echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
 
                                 }
                             }
