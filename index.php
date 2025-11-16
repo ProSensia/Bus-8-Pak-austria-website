@@ -260,85 +260,154 @@ if ($result->num_rows > 0) {
 
             <div class="bus-grid">
                 <?php
-                // Helper function to display seats
-                function displaySeat($seat)
-                {
-                    $seat_class = 'available';
-                    if ($seat['is_booked']) {
-                        $seat_class = 'booked';
-                        if ($seat['gender'] == 'male')
-                            $seat_class .= ' male';
-                        else if ($seat['gender'] == 'female')
-                            $seat_class .= ' female';
-                    }
-
-                    echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
-              data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
-                    echo $seat['seat_number'];
-                    if ($seat['is_booked']) {
-                        echo '<i class="fas fa-lock"></i>';
-                        if ($seat['passenger_name']) {
-                            echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
-                        }
-                    }
-                    echo '</div>';
-                }
+                $current_row = '';
+                $rows = [];
 
                 // Group seats by row
-                $rows = [];
                 foreach ($seats as $seat) {
-                    // Extract row number (first character)
-                    $row = $seat['seat_number'][0];
+                    $row = substr($seat['seat_number'], 0, 1);
                     $rows[$row][] = $seat;
                 }
-
-                // Sort rows numerically
-                ksort($rows);
 
                 // Generate grid layout
                 foreach ($rows as $row_num => $row_seats) {
                     echo '<div class="grid-row grid-row-' . $row_num . '">';
                     echo '<div class="row-label">' . $row_num . '</div>';
 
-                    // Process seats based on row number
-                    switch ($row_num) {
-                        case '1':
-                            // Row 1: 1A, 1B + Driver
-                            foreach ($row_seats as $seat) {
-                                displaySeat($seat);
+                    // Row 1: Special layout with driver
+                    if ($row_num == '1') {
+                        // Left seats (1A, 1B) - span 1.5 columns each
+                        foreach (array_slice($row_seats, 0, 2) as $seat) {
+                            $seat_class = 'available';
+                            if ($seat['is_booked']) {
+                                $seat_class = 'booked';
+                                if ($seat['gender'] == 'male')
+                                    $seat_class .= ' male';
+                                else if ($seat['gender'] == 'female')
+                                    $seat_class .= ' female';
                             }
-                            echo '<div class="driver-area">DRIVER</div>';
-                            break;
 
-                        case '3':
-                            // Row 3: Door + 3A, 3B
-                            echo '<div class="door-area">DOOR</div>';
-                            echo '<div class="walking-area"></div>';
-                            foreach ($row_seats as $seat) {
-                                displaySeat($seat);
+                            echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                            echo $seat['seat_number'];
+                            if ($seat['is_booked']) {
+                                echo '<i class="fas fa-lock"></i>';
+                                if ($seat['passenger_name']) {
+                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                }
                             }
-                            break;
+                            echo '</div>';
+                        }
 
-                        case '8':
-                            // Row 8: All 5 seats in back
-                            foreach ($row_seats as $seat) {
-                                displaySeat($seat);
-                            }
-                            break;
+                        // Driver area
+                        echo '<div class="driver-area">DRIVER</div>';
+                    }
+                    // Row 3: Door layout
+                    else if ($row_num == '3') {
+                        // Door area
+                        echo '<div class="door-area">DOOR</div>';
 
-                        default:
-                            // Regular rows: 2+2 layout with walking area
-                            $left_seats = array_slice($row_seats, 0, 2);
-                            $right_seats = array_slice($row_seats, 2, 2);
+                        // Walking area
+                        echo '<div class="walking-area"></div>';
 
-                            foreach ($left_seats as $seat) {
-                                displaySeat($seat);
+                        // Right side seats (3A, 3B)
+                        foreach (array_slice($row_seats, 0, 2) as $seat) {
+                            $seat_class = 'available';
+                            if ($seat['is_booked']) {
+                                $seat_class = 'booked';
+                                if ($seat['gender'] == 'male')
+                                    $seat_class .= ' male';
+                                else if ($seat['gender'] == 'female')
+                                    $seat_class .= ' female';
                             }
-                            echo '<div class="walking-area"></div>';
-                            foreach ($right_seats as $seat) {
-                                displaySeat($seat);
+
+                            echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                            echo $seat['seat_number'];
+                            if ($seat['is_booked']) {
+                                echo '<i class="fas fa-lock"></i>';
+                                if ($seat['passenger_name']) {
+                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                }
                             }
-                            break;
+                            echo '</div>';
+                        }
+                    }
+                    // Row 8: Back row with 5 seats
+                    else if ($row_num == '8') {
+                        // All 5 seats in one row
+                        foreach ($row_seats as $seat) {
+                            $seat_class = 'available';
+                            if ($seat['is_booked']) {
+                                $seat_class = 'booked';
+                                if ($seat['gender'] == 'male')
+                                    $seat_class .= ' male';
+                                else if ($seat['gender'] == 'female')
+                                    $seat_class .= ' female';
+                            }
+
+                            echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                            echo $seat['seat_number'];
+                            if ($seat['is_booked']) {
+                                echo '<i class="fas fa-lock"></i>';
+                                if ($seat['passenger_name']) {
+                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                }
+                            }
+                            echo '</div>';
+                        }
+                    }
+                    // Regular rows (2, 4, 5, 6, 7)
+                    else {
+                        // Left side seats (A, B)
+                        foreach (array_slice($row_seats, 0, 2) as $seat) {
+                            $seat_class = 'available';
+                            if ($seat['is_booked']) {
+                                $seat_class = 'booked';
+                                if ($seat['gender'] == 'male')
+                                    $seat_class .= ' male';
+                                else if ($seat['gender'] == 'female')
+                                    $seat_class .= ' female';
+                            }
+
+                            echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                            echo $seat['seat_number'];
+                            if ($seat['is_booked']) {
+                                echo '<i class="fas fa-lock"></i>';
+                                if ($seat['passenger_name']) {
+                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                }
+                            }
+                            echo '</div>';
+                        }
+
+                        // Walking area
+                        echo '<div class="walking-area"></div>';
+
+                        // Right side seats (C, D)
+                        foreach (array_slice($row_seats, 2, 2) as $seat) {
+                            $seat_class = 'available';
+                            if ($seat['is_booked']) {
+                                $seat_class = 'booked';
+                                if ($seat['gender'] == 'male')
+                                    $seat_class .= ' male';
+                                else if ($seat['gender'] == 'female')
+                                    $seat_class .= ' female';
+                            }
+
+                            echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                            echo $seat['seat_number'];
+                            if ($seat['is_booked']) {
+                                echo '<i class="fas fa-lock"></i>';
+                                if ($seat['passenger_name']) {
+                                    echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
+                                }
+                            }
+                            echo '</div>';
+                        }
                     }
 
                     echo '</div>';
