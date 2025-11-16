@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
             }
             
             if ($has_paid_fees) {
-                $message = "Student verified! Fee paid until " . $paid_until . " 2025";
+                $message = "Student verified! Fee paid until " . $paid_until . " 2024";
                 $message_type = "success";
                 $fee_status = $fee_payments;
             } else {
@@ -209,9 +209,9 @@ if ($result->num_rows > 0) {
             border-radius: 5px;
         }
         .seat {
-            width: 70px;
-            height: 70px;
-            margin: 5px;
+            width: 60px;
+            height: 60px;
+            margin: 3px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -220,6 +220,7 @@ if ($result->num_rows > 0) {
             transition: all 0.3s;
             font-weight: bold;
             border: 2px solid transparent;
+            font-size: 0.8em;
         }
         .seat:hover:not(.booked) {
             transform: scale(1.05);
@@ -248,12 +249,12 @@ if ($result->num_rows > 0) {
             box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
         }
         .aisle {
-            width: 40px;
+            width: 30px;
             display: inline-block;
         }
         .door {
-            width: 60px;
-            height: 100px;
+            width: 50px;
+            height: 80px;
             background-color: #8B4513;
             display: inline-flex;
             align-items: center;
@@ -263,16 +264,18 @@ if ($result->num_rows > 0) {
             margin: 0 10px;
             writing-mode: vertical-rl;
             text-orientation: mixed;
+            font-size: 0.8em;
         }
         .row-label {
             font-weight: bold;
             margin-right: 10px;
-            width: 30px;
+            width: 25px;
             display: inline-block;
             text-align: center;
+            font-size: 0.9em;
         }
         .seat-row {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             display: flex;
             align-items: center;
         }
@@ -319,6 +322,11 @@ if ($result->num_rows > 0) {
         .badge-pending {
             background-color: #dc3545;
             color: white;
+        }
+        .passenger-name {
+            font-size: 0.6em !important;
+            margin-top: 2px !important;
+            line-height: 1;
         }
     </style>
 </head>
@@ -400,7 +408,7 @@ if ($result->num_rows > 0) {
                         }
                         
                         echo '<div class="seat-row">';
-                        echo '<span class="row-label">Row ' . $row . '</span>';
+                        echo '<span class="row-label">' . $row . '</span>';
                         $current_row = $row;
                         
                         // Add door after row 3
@@ -423,9 +431,9 @@ if ($result->num_rows > 0) {
                          data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
                     echo $seat['seat_number'];
                     if ($seat['is_booked']) {
-                        echo '<i class="fas fa-lock ms-1"></i>';
+                        echo '<i class="fas fa-lock"></i>';
                         if ($seat['passenger_name']) {
-                            echo '<div class="passenger-name" style="font-size: 0.7em; margin-top: 2px;">' . substr($seat['passenger_name'], 0, 8) . '</div>';
+                            echo '<div class="passenger-name">' . substr($seat['passenger_name'], 0, 6) . '</div>';
                         }
                     }
                     echo '</div>';
