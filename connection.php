@@ -1,8 +1,8 @@
 <?php
 $servername = "premium281.web-hosting.com";
-$username = "prosdfwo_bus8user";
+$username = "prosdfwo_bus-8-pak-austria";
 $password = "Bus8PakAustria";
-$dbname   = "prosdfwo_bus_8_db";
+$dbname   = "prosdfwo_bus-8-pak-austria";
 
 
 // Create connection
