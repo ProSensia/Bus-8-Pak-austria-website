@@ -58,7 +58,7 @@
 /* Grid Bus Layout */
 .bus-grid {
     display: grid;
-    grid-template-columns: 0.5fr 1fr 1fr 1fr 1fr 1fr; /* 6 columns */
+    grid-template-columns: 0.2fr 1fr 1fr 1fr 1fr 1fr; /* 6 columns */
     grid-template-rows: auto;
     gap: 12px;
     padding: 25px;
