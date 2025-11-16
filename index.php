@@ -98,50 +98,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
         $seat_data = $check_result->fetch_assoc();
 
         if (!$seat_data['is_booked']) {
-            // Check if student exists and has paid fees
-            $fee_sql = "SELECT s.*, 
-                       GROUP_CONCAT(CONCAT(m.month_name, ':', fp.status)) as fee_data
-                       FROM students s 
-                       LEFT JOIN fee_payments fp ON s.id = fp.student_id 
-                       LEFT JOIN months m ON fp.month_id = m.id 
-                       WHERE s.university_id = ? 
-                       GROUP BY s.id";
-            $fee_stmt = $conn->prepare($fee_sql);
-            $fee_stmt->bind_param("s", $university_id);
-            $fee_stmt->execute();
-            $fee_result = $fee_stmt->get_result();
+            // Check if student/faculty exists
+            $user_sql = "SELECT s.*, 
+                         GROUP_CONCAT(CONCAT(m.month_name, ':', fp.status)) as fee_data
+                         FROM students s 
+                         LEFT JOIN fee_payments fp ON s.id = fp.student_id 
+                         LEFT JOIN months m ON fp.month_id = m.id 
+                         WHERE s.university_id = ? 
+                         GROUP BY s.id";
+            $user_stmt = $conn->prepare($user_sql);
+            $user_stmt->bind_param("s", $university_id);
+            $user_stmt->execute();
+            $user_result = $user_stmt->get_result();
 
-            if ($fee_result->num_rows > 0) {
-                $student_data = $fee_result->fetch_assoc();
+            if ($user_result->num_rows > 0) {
+                $user_data = $user_result->fetch_assoc();
+                $category = strtolower($user_data['category']); // student or faculty
 
-                // Parse and check fee data
-                $fee_data = $student_data['fee_data'];
-                $fee_payments = [];
-                if ($fee_data) {
-                    $payments = explode(',', $fee_data);
-                    foreach ($payments as $payment) {
-                        list($month, $status) = explode(':', $payment);
-                        $fee_payments[$month] = $status;
+                $can_book = false;
+
+                if ($category === 'faculty') {
+                    // Faculty can always book
+                    $can_book = true;
+                } else {
+                    // For students, check if they have paid fees
+                    $fee_data = $user_data['fee_data'];
+                    $fee_payments = [];
+                    if ($fee_data) {
+                        $payments = explode(',', $fee_data);
+                        foreach ($payments as $payment) {
+                            list($month, $status) = explode(':', $payment);
+                            $fee_payments[$month] = $status;
+                        }
                     }
-                }
 
-                $current_month = date('F');
-                $has_paid_fees = false;
+                    $current_month = date('F');
+                    $months_order = ['September', 'October', 'November', 'December'];
+                    $current_month_index = array_search($current_month, $months_order);
 
-                $months_order = ['September', 'October', 'November', 'December'];
-                $current_month_index = array_search($current_month, $months_order);
-
-                if ($current_month_index !== false) {
-                    for ($i = $current_month_index; $i < count($months_order); $i++) {
-                        $month = $months_order[$i];
-                        if (isset($fee_payments[$month]) && $fee_payments[$month] === 'Submitted') {
-                            $has_paid_fees = true;
-                            break;
+                    if ($current_month_index !== false) {
+                        for ($i = $current_month_index; $i < count($months_order); $i++) {
+                            $month = $months_order[$i];
+                            if (isset($fee_payments[$month]) && $fee_payments[$month] === 'Submitted') {
+                                $can_book = true;
+                                break;
+                            }
                         }
                     }
                 }
 
-                if ($has_paid_fees) {
+                if ($can_book) {
                     // Book the seat
                     $update_sql = "UPDATE seats SET is_booked = TRUE, passenger_name = ?, university_id = ?, gender = ?, booking_time = NOW() WHERE seat_number = ?";
                     $update_stmt = $conn->prepare($update_sql);
@@ -159,11 +165,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
                     $message = "Cannot book seat. No active fee payment found for current period.";
                     $message_type = "warning";
                 }
+
             } else {
-                $message = "Student not found. Please verify University ID first.";
+                $message = "User not found. Please verify University ID first.";
                 $message_type = "danger";
             }
-            $fee_stmt->close();
+            $user_stmt->close();
+
         } else {
             $message = "Seat $seat_number is already booked!";
             $message_type = "warning";
@@ -171,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
     }
     $check_stmt->close();
 }
+
 
 // Fetch all seats
 $sql = "SELECT * FROM seats ORDER BY 
