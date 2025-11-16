@@ -3,236 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Coaster Bus Seat Booking</title>
+    <title>Toyota Coaster 34-Seater Bus Booking</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root {
-            --bus-color: #2c3e50;
-            --seat-available: #95a5a6;
-            --seat-male: #3498db;
-            --seat-female: #e84393;
-            --seat-booked: #7f8c8d;
-            --seat-selected: #2ecc71;
-            --floor-color: #34495e;
-            --window-color: #3498db;
-            --aisle-color: #ecf0f1;
-        }
-        
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        .bus-container {
-            max-width: 1200px;
-            margin: 0 auto;
             padding: 20px;
         }
         
-        .bus-3d {
-            background: var(--bus-color);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-            position: relative;
-            overflow: hidden;
-            transform: perspective(1000px) rotateX(5deg);
-            transition: transform 0.5s;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
         }
         
-        .bus-3d:hover {
-            transform: perspective(1000px) rotateX(2deg);
-        }
-        
-        .bus-front {
-            background: linear-gradient(to bottom, #e74c3c, #c0392b);
-            height: 80px;
-            border-radius: 15px 15px 0 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             margin-bottom: 20px;
-            position: relative;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            border: none;
         }
         
-        .bus-front:after {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 20%;
-            width: 60%;
-            height: 10px;
-            background: #2c3e50;
-            border-radius: 0 0 5px 5px;
-        }
-        
-        .bus-body {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        
-        .bus-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            position: relative;
-        }
-        
-        .row-label {
-            width: 30px;
-            text-align: center;
+        .card-header {
+            border-radius: 15px 15px 0 0 !important;
+            background: linear-gradient(to right, #2c3e50, #4a6491);
             color: white;
-            font-weight: bold;
-            background: rgba(0,0,0,0.3);
-            padding: 5px;
-            border-radius: 5px;
         }
         
-        .seats-container {
-            display: flex;
-            gap: 10px;
-            flex: 1;
+        .bus-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         
-        .left-seats, .right-seats {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .seat {
-            width: 50px;
-            height: 60px;
-            background: var(--seat-available);
-            border-radius: 8px 8px 3px 3px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+        #busCanvas {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #2c3e50;
+            border-radius: 10px;
+            background: #f8f9fa;
             cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            transform: perspective(200px) rotateX(10deg);
-            overflow: hidden;
-        }
-        
-        .seat:hover:not(.booked) {
-            transform: perspective(200px) rotateX(10deg) translateY(-5px);
-            box-shadow: 0 8px 15px rgba(0,0,0,0.3);
-        }
-        
-        .seat.selected {
-            background: var(--seat-selected);
-            box-shadow: 0 0 15px rgba(46, 204, 113, 0.7);
-        }
-        
-        .seat.male {
-            background: var(--seat-male);
-        }
-        
-        .seat.female {
-            background: var(--seat-female);
-        }
-        
-        .seat.booked {
-            background: var(--seat-booked);
-            cursor: not-allowed;
-            opacity: 0.8;
-        }
-        
-        .seat-number {
-            font-size: 12px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-        }
-        
-        .passenger-name {
-            font-size: 9px;
-            color: white;
-            text-align: center;
-            margin-top: 2px;
-            line-height: 1;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-            max-width: 90%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        
-        .aisle {
-            flex: 1;
-            height: 60px;
-            background: var(--aisle-color);
-            border-radius: 5px;
-            margin: 0 10px;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
-        }
-        
-        .door {
-            width: 70px;
-            height: 100px;
-            background: linear-gradient(to bottom, #8B4513, #654321);
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            margin-left: 20px;
-        }
-        
-        .bus-floor {
-            height: 20px;
-            background: var(--floor-color);
-            border-radius: 0 0 10px 10px;
-            margin-top: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .bus-windows {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-        }
-        
-        .window {
-            position: absolute;
-            background: var(--window-color);
-            border-radius: 5px;
-            opacity: 0.2;
-        }
-        
-        .window-left {
-            left: 10px;
-            top: 20%;
-            width: 5px;
-            height: 60%;
-        }
-        
-        .window-right {
-            right: 10px;
-            top: 20%;
-            width: 5px;
-            height: 60%;
         }
         
         .legend {
             display: flex;
             justify-content: center;
-            margin-top: 30px;
+            margin-top: 20px;
             flex-wrap: wrap;
             gap: 15px;
         }
@@ -253,12 +72,26 @@
             margin-right: 8px;
         }
         
-        .student-info {
-            background: rgba(255,255,255,0.9);
+        .seat-info {
+            background: #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .booking-form {
+            background: white;
             border-radius: 10px;
             padding: 20px;
-            margin-bottom: 20px;
+            margin-top: 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .student-info {
+            background: #e7f3ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
         }
         
         .fee-status {
@@ -285,33 +118,11 @@
         .badge-pending {
             background-color: #dc3545;
         }
-        
-        .booking-form {
-            background: rgba(255,255,255,0.9);
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        
-        .seat-preview {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
     </style>
 </head>
 <body>
-    <div class="bus-container">
-        <h1 class="text-center mb-4 text-white"><i class="fas fa-bus"></i> 3D Coaster Bus Seat Booking</h1>
+    <div class="container">
+        <h1 class="text-center mb-4 text-white"><i class="fas fa-bus"></i> Toyota Coaster 34-Seater Bus Booking</h1>
         
         <!-- University ID Verification -->
         <div class="card mb-4">
@@ -362,225 +173,45 @@
             </div>
         </div>
         
-        <!-- 3D Bus Layout -->
-        <div class="bus-3d">
-            <div class="bus-front">
-                <i class="fas fa-user-tie me-2"></i> DRIVER
+        <!-- Bus Canvas -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-bus"></i> Bus Layout - Top-Down View</h5>
             </div>
-            
-            <div class="bus-body">
-                <!-- Row 1: 2 seats -->
-                <div class="bus-row">
-                    <div class="row-label">1</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="1A">
-                                <div class="seat-number">1A</div>
-                            </div>
-                            <div class="seat available" data-seat="1B">
-                                <div class="seat-number">1B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats"></div>
+            <div class="card-body">
+                <div class="bus-container">
+                    <canvas id="busCanvas"></canvas>
+                    
+                    <div class="seat-info" id="seat-info" style="display: none;">
+                        <h6>Selected Seat: <span id="selected-seat-number">-</span></h6>
+                        <p><strong>Status:</strong> <span id="seat-status">Available</span></p>
+                        <p><strong>Passenger:</strong> <span id="seat-passenger">-</span></p>
                     </div>
                 </div>
                 
-                <!-- Row 2: 4 seats -->
-                <div class="bus-row">
-                    <div class="row-label">2</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="2A">
-                                <div class="seat-number">2A</div>
-                            </div>
-                            <div class="seat available" data-seat="2B">
-                                <div class="seat-number">2B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="2C">
-                                <div class="seat-number">2C</div>
-                            </div>
-                            <div class="seat available" data-seat="2D">
-                                <div class="seat-number">2D</div>
-                            </div>
-                        </div>
+                <!-- Legend -->
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #95a5a6;"></div>
+                        <span>Available Seat</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #3498db;"></div>
+                        <span>Male Booked</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #e84393;"></div>
+                        <span>Female Booked</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #2ecc71;"></div>
+                        <span>Selected</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #7f8c8d;"></div>
+                        <span>Booked</span>
                     </div>
                 </div>
-                
-                <!-- Row 3: 2 seats + door -->
-                <div class="bus-row">
-                    <div class="row-label">3</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="3A">
-                                <div class="seat-number">3A</div>
-                            </div>
-                            <div class="seat available" data-seat="3B">
-                                <div class="seat-number">3B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="door">DOOR</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 4: 4 seats -->
-                <div class="bus-row">
-                    <div class="row-label">4</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="4A">
-                                <div class="seat-number">4A</div>
-                            </div>
-                            <div class="seat available" data-seat="4B">
-                                <div class="seat-number">4B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="4C">
-                                <div class="seat-number">4C</div>
-                            </div>
-                            <div class="seat available" data-seat="4D">
-                                <div class="seat-number">4D</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 5: 4 seats -->
-                <div class="bus-row">
-                    <div class="row-label">5</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="5A">
-                                <div class="seat-number">5A</div>
-                            </div>
-                            <div class="seat available" data-seat="5B">
-                                <div class="seat-number">5B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="5C">
-                                <div class="seat-number">5C</div>
-                            </div>
-                            <div class="seat available" data-seat="5D">
-                                <div class="seat-number">5D</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 6: 4 seats -->
-                <div class="bus-row">
-                    <div class="row-label">6</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="6A">
-                                <div class="seat-number">6A</div>
-                            </div>
-                            <div class="seat available" data-seat="6B">
-                                <div class="seat-number">6B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="6C">
-                                <div class="seat-number">6C</div>
-                            </div>
-                            <div class="seat available" data-seat="6D">
-                                <div class="seat-number">6D</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 7: 4 seats -->
-                <div class="bus-row">
-                    <div class="row-label">7</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="7A">
-                                <div class="seat-number">7A</div>
-                            </div>
-                            <div class="seat available" data-seat="7B">
-                                <div class="seat-number">7B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="7C">
-                                <div class="seat-number">7C</div>
-                            </div>
-                            <div class="seat available" data-seat="7D">
-                                <div class="seat-number">7D</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Row 8: 5 seats -->
-                <div class="bus-row">
-                    <div class="row-label">8</div>
-                    <div class="seats-container">
-                        <div class="left-seats">
-                            <div class="seat available" data-seat="8A">
-                                <div class="seat-number">8A</div>
-                            </div>
-                            <div class="seat available" data-seat="8B">
-                                <div class="seat-number">8B</div>
-                            </div>
-                        </div>
-                        <div class="aisle"></div>
-                        <div class="right-seats">
-                            <div class="seat available" data-seat="8C">
-                                <div class="seat-number">8C</div>
-                            </div>
-                            <div class="seat available" data-seat="8D">
-                                <div class="seat-number">8D</div>
-                            </div>
-                            <div class="seat available" data-seat="8E">
-                                <div class="seat-number">8E</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bus-floor"></div>
-            <div class="bus-windows">
-                <div class="window window-left"></div>
-                <div class="window window-right"></div>
-            </div>
-        </div>
-        
-        <!-- Legend -->
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: var(--seat-available);"></div>
-                <span>Available Seat</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: var(--seat-male);"></div>
-                <span>Male Booked</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: var(--seat-female);"></div>
-                <span>Female Booked</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: var(--seat-booked);"></div>
-                <span>Booked</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: var(--seat-selected);"></div>
-                <span>Selected</span>
             </div>
         </div>
         
@@ -588,52 +219,41 @@
         <div id="booking-form" class="booking-form" style="display: none;">
             <h5 class="text-center mb-4"><i class="fas fa-ticket-alt"></i> Book Your Seat</h5>
             
-            <div class="row">
-                <div class="col-md-4 text-center">
-                    <div id="seat-preview" class="seat-preview" style="background-color: var(--seat-available);">
-                        <div class="seat-number" id="preview-seat-number">-</div>
-                        <div class="passenger-name" id="preview-passenger-name">Your Name</div>
-                    </div>
-                </div>
+            <form id="booking-details">
+                <input type="hidden" id="selected-seat-number" name="selected_seat_number">
                 
-                <div class="col-md-8">
-                    <form id="booking-details">
-                        <input type="hidden" id="selected-seat-number">
-                        
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="booking-university-id" class="form-label">University ID</label>
-                                <input type="text" class="form-control" id="booking-university-id" readonly>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="booking-university-id" class="form-label">University ID</label>
+                        <input type="text" class="form-control" id="booking-university-id" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="passenger-name" class="form-label">Passenger Name</label>
+                        <input type="text" class="form-control" id="passenger-name" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Gender</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="gender" id="male" value="male" required>
+                                <label class="form-check-label" for="male">Male</label>
                             </div>
-                            <div class="col-md-6">
-                                <label for="passenger-name" class="form-label">Passenger Name</label>
-                                <input type="text" class="form-control" id="passenger-name" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Gender</label>
-                                <div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="gender" id="male" value="male" required>
-                                        <label class="form-check-label" for="male">Male</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="gender" id="female" value="female">
-                                        <label class="form-check-label" for="female">Female</label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <button type="submit" class="btn btn-success w-100">
-                                    <i class="fas fa-check"></i> Confirm Booking
-                                </button>
-                                <button type="button" id="cancel-booking" class="btn btn-secondary w-100 mt-2">
-                                    <i class="fas fa-times"></i> Cancel Selection
-                                </button>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="gender" id="female" value="female">
+                                <label class="form-check-label" for="female">Female</label>
                             </div>
                         </div>
-                    </form>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-check"></i> Confirm Booking
+                        </button>
+                        <button type="button" id="cancel-booking" class="btn btn-secondary w-100 mt-2">
+                            <i class="fas fa-times"></i> Cancel Selection
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </form>
         </div>
 
         <!-- Admin Login Link -->
@@ -647,12 +267,16 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const seats = document.querySelectorAll('.seat.available');
+            const canvas = document.getElementById('busCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas dimensions
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
             const studentInfo = document.getElementById('student-info');
             const bookingForm = document.getElementById('booking-form');
-            const seatPreview = document.getElementById('seat-preview');
-            const previewSeatNumber = document.getElementById('preview-seat-number');
-            const previewPassengerName = document.getElementById('preview-passenger-name');
+            const seatInfo = document.getElementById('seat-info');
             const selectedSeatNumber = document.getElementById('selected-seat-number');
             const bookingUniversityId = document.getElementById('booking-university-id');
             const passengerName = document.getElementById('passenger-name');
@@ -662,6 +286,224 @@
             
             let selectedSeat = null;
             let currentStudent = null;
+            let seats = {};
+            
+            // Initialize seats data
+            function initializeSeats() {
+                // Define all 34 seats with their positions
+                const seatData = [
+                    // Row 1: Driver + 2 seats
+                    { id: 'driver', row: 1, col: 1, x: 50, y: 100, width: 60, height: 80, type: 'driver' },
+                    { id: '1A', row: 1, col: 2, x: 150, y: 100, width: 40, height: 60 },
+                    { id: '1B', row: 1, col: 3, x: 200, y: 100, width: 40, height: 60 },
+                    
+                    // Row 2: 4 seats
+                    { id: '2A', row: 2, col: 1, x: 150, y: 180, width: 40, height: 60 },
+                    { id: '2B', row: 2, col: 2, x: 200, y: 180, width: 40, height: 60 },
+                    { id: '2C', row: 2, col: 3, x: 300, y: 180, width: 40, height: 60 },
+                    { id: '2D', row: 2, col: 4, x: 350, y: 180, width: 40, height: 60 },
+                    
+                    // Row 3: 2 seats + door
+                    { id: '3A', row: 3, col: 1, x: 150, y: 260, width: 40, height: 60 },
+                    { id: '3B', row: 3, col: 2, x: 200, y: 260, width: 40, height: 60 },
+                    
+                    // Row 4: 4 seats
+                    { id: '4A', row: 4, col: 1, x: 150, y: 340, width: 40, height: 60 },
+                    { id: '4B', row: 4, col: 2, x: 200, y: 340, width: 40, height: 60 },
+                    { id: '4C', row: 4, col: 3, x: 300, y: 340, width: 40, height: 60 },
+                    { id: '4D', row: 4, col: 4, x: 350, y: 340, width: 40, height: 60 },
+                    
+                    // Row 5: 4 seats
+                    { id: '5A', row: 5, col: 1, x: 150, y: 420, width: 40, height: 60 },
+                    { id: '5B', row: 5, col: 2, x: 200, y: 420, width: 40, height: 60 },
+                    { id: '5C', row: 5, col: 3, x: 300, y: 420, width: 40, height: 60 },
+                    { id: '5D', row: 5, col: 4, x: 350, y: 420, width: 40, height: 60 },
+                    
+                    // Row 6: 4 seats
+                    { id: '6A', row: 6, col: 1, x: 150, y: 500, width: 40, height: 60 },
+                    { id: '6B', row: 6, col: 2, x: 200, y: 500, width: 40, height: 60 },
+                    { id: '6C', row: 6, col: 3, x: 300, y: 500, width: 40, height: 60 },
+                    { id: '6D', row: 6, col: 4, x: 350, y: 500, width: 40, height: 60 },
+                    
+                    // Row 7: 4 seats
+                    { id: '7A', row: 7, col: 1, x: 150, y: 580, width: 40, height: 60 },
+                    { id: '7B', row: 7, col: 2, x: 200, y: 580, width: 40, height: 60 },
+                    { id: '7C', row: 7, col: 3, x: 300, y: 580, width: 40, height: 60 },
+                    { id: '7D', row: 7, col: 4, x: 350, y: 580, width: 40, height: 60 },
+                    
+                    // Row 8: 4 seats
+                    { id: '8A', row: 8, col: 1, x: 150, y: 660, width: 40, height: 60 },
+                    { id: '8B', row: 8, col: 2, x: 200, y: 660, width: 40, height: 60 },
+                    { id: '8C', row: 8, col: 3, x: 300, y: 660, width: 40, height: 60 },
+                    { id: '8D', row: 8, col: 4, x: 350, y: 660, width: 40, height: 60 },
+                    
+                    // Row 9: 5 seats
+                    { id: '9A', row: 9, col: 1, x: 150, y: 740, width: 40, height: 60 },
+                    { id: '9B', row: 9, col: 2, x: 200, y: 740, width: 40, height: 60 },
+                    { id: '9C', row: 9, col: 3, x: 300, y: 740, width: 40, height: 60 },
+                    { id: '9D', row: 9, col: 4, x: 350, y: 740, width: 40, height: 60 },
+                    { id: '9E', row: 9, col: 5, x: 400, y: 740, width: 40, height: 60 }
+                ];
+                
+                // Initialize all seats as available
+                seatData.forEach(seat => {
+                    seats[seat.id] = {
+                        ...seat,
+                        booked: false,
+                        passengerName: '',
+                        gender: '',
+                        selected: false
+                    };
+                });
+                
+                // Mark some seats as booked for demonstration
+                seats['1A'].booked = true;
+                seats['1A'].passengerName = 'John Smith';
+                seats['1A'].gender = 'male';
+                
+                seats['2C'].booked = true;
+                seats['2C'].passengerName = 'Emma Johnson';
+                seats['2C'].gender = 'female';
+                
+                seats['4B'].booked = true;
+                seats['4B'].passengerName = 'Michael Brown';
+                seats['4B'].gender = 'male';
+                
+                seats['6D'].booked = true;
+                seats['6D'].passengerName = 'Sarah Davis';
+                seats['6D'].gender = 'female';
+            }
+            
+            // Draw the bus
+            function drawBus() {
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw bus outline
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(40, 50, 420, 780);
+                
+                // Draw bus windows
+                ctx.fillStyle = '#3498db';
+                ctx.fillRect(45, 55, 410, 40); // Front window
+                
+                // Side windows
+                for (let i = 0; i < 8; i++) {
+                    ctx.fillRect(45, 120 + i * 80, 410, 30);
+                }
+                
+                // Draw aisle
+                ctx.fillStyle = '#ecf0f1';
+                ctx.fillRect(250, 100, 20, 700);
+                
+                // Draw door
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(45, 260, 40, 100);
+                ctx.fillStyle = '#cd853f';
+                ctx.fillRect(50, 265, 30, 90);
+                
+                // Draw seats
+                Object.values(seats).forEach(seat => {
+                    if (seat.type === 'driver') {
+                        // Draw driver seat
+                        ctx.fillStyle = '#e74c3c';
+                        ctx.fillRect(seat.x, seat.y, seat.width, seat.height);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '12px Arial';
+                        ctx.fillText('DRIVER', seat.x + 5, seat.y + 45);
+                    } else {
+                        // Determine seat color based on status
+                        if (seat.selected) {
+                            ctx.fillStyle = '#2ecc71'; // Selected
+                        } else if (seat.booked) {
+                            if (seat.gender === 'male') {
+                                ctx.fillStyle = '#3498db'; // Male
+                            } else if (seat.gender === 'female') {
+                                ctx.fillStyle = '#e84393'; // Female
+                            } else {
+                                ctx.fillStyle = '#7f8c8d'; // Booked (unknown gender)
+                            }
+                        } else {
+                            ctx.fillStyle = '#95a5a6'; // Available
+                        }
+                        
+                        // Draw seat
+                        ctx.fillRect(seat.x, seat.y, seat.width, seat.height);
+                        
+                        // Draw seat number
+                        ctx.fillStyle = 'white';
+                        ctx.font = '12px Arial';
+                        ctx.fillText(seat.id, seat.x + 10, seat.y + 35);
+                        
+                        // Draw passenger name if booked
+                        if (seat.booked && seat.passengerName) {
+                            ctx.fillStyle = 'white';
+                            ctx.font = '10px Arial';
+                            const shortName = seat.passengerName.length > 8 ? 
+                                seat.passengerName.substring(0, 8) + '...' : seat.passengerName;
+                            ctx.fillText(shortName, seat.x + 5, seat.y + 50);
+                        }
+                    }
+                });
+                
+                // Draw labels
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = '14px Arial';
+                ctx.fillText('FRONT', 200, 40);
+                ctx.fillText('DOOR', 30, 310);
+            }
+            
+            // Handle canvas click
+            canvas.addEventListener('click', function(event) {
+                if (!currentStudent) {
+                    alert('Please verify your University ID first!');
+                    return;
+                }
+                
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                // Check if any seat was clicked
+                Object.values(seats).forEach(seat => {
+                    if (seat.type === 'driver') return; // Skip driver seat
+                    
+                    if (x >= seat.x && x <= seat.x + seat.width &&
+                        y >= seat.y && y <= seat.y + seat.height) {
+                        
+                        if (seat.booked) {
+                            // Show booked seat info
+                            document.getElementById('selected-seat-number').textContent = seat.id;
+                            document.getElementById('seat-status').textContent = 'Booked';
+                            document.getElementById('seat-passenger').textContent = seat.passengerName;
+                            seatInfo.style.display = 'block';
+                            bookingForm.style.display = 'none';
+                        } else {
+                            // Select available seat
+                            if (selectedSeat) {
+                                selectedSeat.selected = false;
+                            }
+                            
+                            seat.selected = true;
+                            selectedSeat = seat;
+                            
+                            // Update seat info
+                            document.getElementById('selected-seat-number').textContent = seat.id;
+                            document.getElementById('seat-status').textContent = 'Available';
+                            document.getElementById('seat-passenger').textContent = '-';
+                            seatInfo.style.display = 'block';
+                            
+                            // Show booking form
+                            bookingForm.style.display = 'block';
+                            selectedSeatNumber.value = seat.id;
+                            bookingForm.scrollIntoView({ behavior: 'smooth' });
+                        }
+                        
+                        // Redraw bus
+                        drawBus();
+                    }
+                });
+            });
             
             // University ID verification
             verifyForm.addEventListener('submit', function(e) {
@@ -674,57 +516,15 @@
                 }
             });
             
-            // Seat selection
-            seats.forEach(seat => {
-                seat.addEventListener('click', function() {
-                    if (!currentStudent) {
-                        alert('Please verify your University ID first!');
-                        return;
-                    }
-                    
-                    // Remove selection from all seats
-                    seats.forEach(s => s.classList.remove('selected'));
-                    
-                    // Add selection to clicked seat
-                    this.classList.add('selected');
-                    selectedSeat = this;
-                    
-                    // Update preview
-                    const seatNum = this.getAttribute('data-seat');
-                    previewSeatNumber.textContent = seatNum;
-                    selectedSeatNumber.value = seatNum;
-                    
-                    // Show booking form
-                    bookingForm.style.display = 'block';
-                    bookingForm.scrollIntoView({ behavior: 'smooth' });
-                });
-            });
-            
-            // Gender selection updates preview
-            document.querySelectorAll('input[name="gender"]').forEach(radio => {
-                radio.addEventListener('change', function() {
-                    if (this.checked) {
-                        if (this.value === 'male') {
-                            seatPreview.style.backgroundColor = 'var(--seat-male)';
-                        } else {
-                            seatPreview.style.backgroundColor = 'var(--seat-female)';
-                        }
-                    }
-                });
-            });
-            
-            // Passenger name updates preview
-            passengerName.addEventListener('input', function() {
-                previewPassengerName.textContent = this.value || 'Your Name';
-            });
-            
             // Cancel booking
             cancelBtn.addEventListener('click', function() {
                 if (selectedSeat) {
-                    selectedSeat.classList.remove('selected');
+                    selectedSeat.selected = false;
                     selectedSeat = null;
                 }
                 bookingForm.style.display = 'none';
+                seatInfo.style.display = 'none';
+                drawBus();
             });
             
             // Booking submission
@@ -801,7 +601,6 @@
                     // Update booking form
                     bookingUniversityId.value = currentStudent.university_id;
                     passengerName.value = currentStudent.name;
-                    previewPassengerName.textContent = currentStudent.name;
                     
                     // Show student info
                     studentInfo.style.display = 'block';
@@ -818,15 +617,15 @@
                 const gender = document.querySelector('input[name="gender"]:checked').value;
                 const name = passengerName.value;
                 
-                // Update seat appearance
-                selectedSeat.classList.remove('available', 'selected');
-                selectedSeat.classList.add('booked', gender);
+                // Update seat data
+                selectedSeat.booked = true;
+                selectedSeat.passengerName = name;
+                selectedSeat.gender = gender;
+                selectedSeat.selected = false;
                 
-                // Add passenger name to seat
-                const passengerNameEl = document.createElement('div');
-                passengerNameEl.className = 'passenger-name';
-                passengerNameEl.textContent = name;
-                selectedSeat.appendChild(passengerNameEl);
+                // Update seat info
+                document.getElementById('seat-status').textContent = 'Booked';
+                document.getElementById('seat-passenger').textContent = name;
                 
                 // Show success message
                 alert(`Seat ${seatNum} booked successfully for ${name}!`);
@@ -835,10 +634,20 @@
                 bookingForm.style.display = 'none';
                 selectedSeat = null;
                 
-                // Reset preview
-                seatPreview.style.backgroundColor = 'var(--seat-available)';
-                document.querySelector('input[name="gender"]').checked = false;
+                // Redraw bus
+                drawBus();
             }
+            
+            // Initialize and draw
+            initializeSeats();
+            drawBus();
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+                drawBus();
+            });
         });
     </script>
 </body>
