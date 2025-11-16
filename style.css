@@ -500,12 +500,11 @@
 .grid-row-2 .seat:nth-child(5) { grid-column: 5; } /* 1st right seat */
 .grid-row-2 .seat:nth-child(6) { grid-column: 6; } /* 2nd right seat */
 
-/* Repeat for rows 3-7 */
 .grid-row-3 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-3 .seat:nth-child(3) { grid-column: 3; }
+.grid-row-3 .seat:nth-child(4) { grid-column: 5; }
+.grid-row-3 .seat:nth-child(5) { grid-column: 6; }
 .grid-row-3 .walking-area { grid-column: 4; }
-.grid-row-3 .seat:nth-child(5) { grid-column: 5; }
-.grid-row-3 .seat:nth-child(6) { grid-column: 6; }
 
 .grid-row-4 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-4 .seat:nth-child(3) { grid-column: 3; }
