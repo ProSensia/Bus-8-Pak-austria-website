@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
             }
             
             if ($has_paid_fees) {
-                $message = "Student verified! Fee paid until " . $paid_until . " 2024";
+                $message = "Student verified! Fee paid until " . $paid_until . " 2025";
                 $message_type = "success";
                 $fee_status = $fee_payments;
             } else {
