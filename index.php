@@ -80,105 +80,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
     }
 }
 
-// Handle seat booking
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
-    $seat_number = $_POST['seat_number'];
-    $university_id = $_POST['booking_university_id'];
-    $passenger_name = $_POST['passenger_name'];
-    $gender = $_POST['gender'];
 
-    // Check if seat is already booked
-    $check_sql = "SELECT is_booked FROM seats WHERE seat_number = ?";
-    $check_stmt = $conn->prepare($check_sql);
-    $check_stmt->bind_param("s", $seat_number);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
 
-    if ($check_result->num_rows > 0) {
-        $seat_data = $check_result->fetch_assoc();
 
-        if (!$seat_data['is_booked']) {
-            // Check if student/faculty exists
-            $user_sql = "SELECT s.*, 
+// Check if this university ID already has a booked seat
+$seat_check_sql = "SELECT * FROM seats WHERE university_id = ?";
+$seat_check_stmt = $conn->prepare($seat_check_sql);
+$seat_check_stmt->bind_param("s", $university_id);
+$seat_check_stmt->execute();
+$seat_check_result = $seat_check_stmt->get_result();
+
+if ($seat_check_result->num_rows > 0) {
+    $message = "You have already booked a seat. Only one seat allowed per person.";
+    $message_type = "warning";
+} else {
+    // Handle seat booking
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
+        $seat_number = $_POST['seat_number'];
+        $university_id = $_POST['booking_university_id'];
+        $passenger_name = $_POST['passenger_name'];
+        $gender = $_POST['gender'];
+
+        // Check if seat is already booked
+        $check_sql = "SELECT is_booked FROM seats WHERE seat_number = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("s", $seat_number);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+
+        if ($check_result->num_rows > 0) {
+            $seat_data = $check_result->fetch_assoc();
+
+            if (!$seat_data['is_booked']) {
+                // Check if student/faculty exists
+                $user_sql = "SELECT s.*, 
                          GROUP_CONCAT(CONCAT(m.month_name, ':', fp.status)) as fee_data
                          FROM students s 
                          LEFT JOIN fee_payments fp ON s.id = fp.student_id 
                          LEFT JOIN months m ON fp.month_id = m.id 
                          WHERE s.university_id = ? 
                          GROUP BY s.id";
-            $user_stmt = $conn->prepare($user_sql);
-            $user_stmt->bind_param("s", $university_id);
-            $user_stmt->execute();
-            $user_result = $user_stmt->get_result();
+                $user_stmt = $conn->prepare($user_sql);
+                $user_stmt->bind_param("s", $university_id);
+                $user_stmt->execute();
+                $user_result = $user_stmt->get_result();
 
-            if ($user_result->num_rows > 0) {
-                $user_data = $user_result->fetch_assoc();
-                $category = strtolower($user_data['category']); // student or faculty
+                if ($user_result->num_rows > 0) {
+                    $user_data = $user_result->fetch_assoc();
+                    $category = strtolower($user_data['category']); // student or faculty
 
-                $can_book = false;
+                    $can_book = false;
 
-                if ($category === 'faculty') {
-                    // Faculty can always book
-                    $can_book = true;
-                } else {
-                    // For students, check if they have paid fees
-                    $fee_data = $user_data['fee_data'];
-                    $fee_payments = [];
-                    if ($fee_data) {
-                        $payments = explode(',', $fee_data);
-                        foreach ($payments as $payment) {
-                            list($month, $status) = explode(':', $payment);
-                            $fee_payments[$month] = $status;
+                    if ($category === 'faculty') {
+                        // Faculty can always book
+                        $can_book = true;
+                    } else {
+                        // For students, check if they have paid fees
+                        $fee_data = $user_data['fee_data'];
+                        $fee_payments = [];
+                        if ($fee_data) {
+                            $payments = explode(',', $fee_data);
+                            foreach ($payments as $payment) {
+                                list($month, $status) = explode(':', $payment);
+                                $fee_payments[$month] = $status;
+                            }
                         }
-                    }
 
-                    $current_month = date('F');
-                    $months_order = ['September', 'October', 'November', 'December'];
-                    $current_month_index = array_search($current_month, $months_order);
+                        $current_month = date('F');
+                        $months_order = ['September', 'October', 'November', 'December'];
+                        $current_month_index = array_search($current_month, $months_order);
 
-                    if ($current_month_index !== false) {
-                        for ($i = $current_month_index; $i < count($months_order); $i++) {
-                            $month = $months_order[$i];
-                            if (isset($fee_payments[$month]) && $fee_payments[$month] === 'Submitted') {
-                                $can_book = true;
-                                break;
+                        if ($current_month_index !== false) {
+                            for ($i = $current_month_index; $i < count($months_order); $i++) {
+                                $month = $months_order[$i];
+                                if (isset($fee_payments[$month]) && $fee_payments[$month] === 'Submitted') {
+                                    $can_book = true;
+                                    break;
+                                }
                             }
                         }
                     }
-                }
 
-                if ($can_book) {
-                    // Book the seat
-                    $update_sql = "UPDATE seats SET is_booked = TRUE, passenger_name = ?, university_id = ?, gender = ?, booking_time = NOW() WHERE seat_number = ?";
-                    $update_stmt = $conn->prepare($update_sql);
-                    $update_stmt->bind_param("ssss", $passenger_name, $university_id, $gender, $seat_number);
+                    if ($can_book) {
+                        // Book the seat
+                        $update_sql = "UPDATE seats SET is_booked = TRUE, passenger_name = ?, university_id = ?, gender = ?, booking_time = NOW() WHERE seat_number = ?";
+                        $update_stmt = $conn->prepare($update_sql);
+                        $update_stmt->bind_param("ssss", $passenger_name, $university_id, $gender, $seat_number);
 
-                    if ($update_stmt->execute()) {
-                        $message = "Seat $seat_number booked successfully for $passenger_name!";
-                        $message_type = "success";
+                        if ($update_stmt->execute()) {
+                            $message = "Seat $seat_number booked successfully for $passenger_name!";
+                            $message_type = "success";
+                        } else {
+                            $message = "Error booking seat: " . $conn->error;
+                            $message_type = "danger";
+                        }
+                        $update_stmt->close();
                     } else {
-                        $message = "Error booking seat: " . $conn->error;
-                        $message_type = "danger";
+                        $message = "Cannot book seat. No active fee payment found for current period.";
+                        $message_type = "warning";
                     }
-                    $update_stmt->close();
+
                 } else {
-                    $message = "Cannot book seat. No active fee payment found for current period.";
-                    $message_type = "warning";
+                    $message = "User not found. Please verify University ID first.";
+                    $message_type = "danger";
                 }
+                $user_stmt->close();
 
             } else {
-                $message = "User not found. Please verify University ID first.";
-                $message_type = "danger";
+                $message = "Seat $seat_number is already booked!";
+                $message_type = "warning";
             }
-            $user_stmt->close();
-
-        } else {
-            $message = "Seat $seat_number is already booked!";
-            $message_type = "warning";
         }
+        $check_stmt->close();
     }
-    $check_stmt->close();
 }
+$seat_check_stmt->close();
 
 
 // Fetch all seats
