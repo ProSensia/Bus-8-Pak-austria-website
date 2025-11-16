@@ -489,41 +489,47 @@
 }
 
 
+/* Row 1: Driver row (2 seats + driver) */
+.grid-row-1 .seat:nth-child(2) { grid-column: 2 / span 1.5; }
+.grid-row-1 .seat:nth-child(3) { grid-column: 3.5 / span 1.5; }
+.grid-row-1 .driver-area { grid-column: 5 / span 2; display: flex; align-items: center; justify-content: center; }
 
-/* Row 1: Driver row */
-.grid-row-1 .seat:nth-child(1) { grid-column: 2 / span 1.5; }
-.grid-row-1 .seat:nth-child(2) { grid-column: 3.5 / span 1.5; }
-
-/* Rows 2–7: Normal rows with 4 seats */
+/* Rows 2–7: Normal rows with 4 seats and walking area */
 .grid-row-2 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-2 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-2 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-2 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-2 .walking-area { grid-column: 4; }
 
 .grid-row-3 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-3 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-3 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-3 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-3 .walking-area { grid-column: 4; }
 
 .grid-row-4 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-4 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-4 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-4 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-4 .walking-area { grid-column: 4; }
 
 .grid-row-5 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-5 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-5 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-5 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-5 .walking-area { grid-column: 4; }
 
 .grid-row-6 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-6 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-6 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-6 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-6 .walking-area { grid-column: 4; }
 
 .grid-row-7 .seat:nth-child(2) { grid-column: 2; }
 .grid-row-7 .seat:nth-child(3) { grid-column: 3; }
 .grid-row-7 .seat:nth-child(4) { grid-column: 5; }
 .grid-row-7 .seat:nth-child(5) { grid-column: 6; }
+.grid-row-7 .walking-area { grid-column: 4; }
 
 /* Row 8: Back row with 5 seats */
 .grid-row-8 .seat:nth-child(2) { grid-column: 2; }
