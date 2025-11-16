@@ -372,7 +372,7 @@ if ($result->num_rows > 0) {
                             }
 
                             echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
-                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+             data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
                             echo $seat['seat_number'];
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
@@ -383,7 +383,7 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
 
-                        // Walking area
+                        // Walking area (must be here in DOM order)
                         echo '<div class="walking-area"></div>';
 
                         // Right side seats (C, D)
@@ -398,7 +398,7 @@ if ($result->num_rows > 0) {
                             }
 
                             echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
-                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+             data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
                             echo $seat['seat_number'];
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
@@ -409,6 +409,7 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
                     }
+
 
                     echo '</div>';
                 }
