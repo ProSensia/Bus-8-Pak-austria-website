@@ -1,6 +1,6 @@
 <?php
 $servername = "premium281.web-hosting.com";
-$username = "prosdfwo_bus-8-pak-austria";
+$username = "prosdfwo_bus8-pak-austria";
 $password = "Bus8PakAustria";
 $dbname   = "prosdfwo_bus-8-pak-austria";
 
