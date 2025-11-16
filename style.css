@@ -1,0 +1,135 @@
+.bus-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .driver-section {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+        .seat {
+            width: 60px;
+            height: 60px;
+            margin: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            border: 2px solid transparent;
+            font-size: 0.8em;
+        }
+        .seat:hover:not(.booked) {
+            transform: scale(1.05);
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+        .seat.available {
+            background-color: #c0c0c0;
+            color: #333;
+        }
+        .seat.male {
+            background-color: #4d79ff;
+            color: white;
+        }
+        .seat.female {
+            background-color: #ff66b2;
+            color: white;
+        }
+        .seat.booked {
+            background-color: #6c757d;
+            color: white;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .seat.selected {
+            border: 3px solid #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+        }
+        .aisle {
+            width: 30px;
+            display: inline-block;
+        }
+        .door {
+            width: 50px;
+            height: 80px;
+            background-color: #8B4513;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            border-radius: 5px;
+            margin: 0 10px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.8em;
+        }
+        .row-label {
+            font-weight: bold;
+            margin-right: 10px;
+            width: 25px;
+            display: inline-block;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        .seat-row {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 0 10px 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 5px;
+        }
+        .student-info {
+            background-color: #e7f3ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .fee-status {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .fee-month {
+            text-align: center;
+        }
+        .fee-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
+        .badge-submitted {
+            background-color: #28a745;
+            color: white;
+        }
+        .badge-pending {
+            background-color: #dc3545;
+            color: white;
+        }
+        .passenger-name {
+            font-size: 0.6em !important;
+            margin-top: 2px !important;
+            line-height: 1;
+        }
