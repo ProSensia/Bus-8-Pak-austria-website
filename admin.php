@@ -152,6 +152,60 @@ if (isset($_GET['delete_student'])) {
     $stmt->close();
 }
 
+// Remove seat booking
+if (isset($_GET['remove_seat'])) {
+    $seat_number = $_GET['remove_seat'];
+    
+    $sql = "UPDATE seats SET is_booked = FALSE, passenger_name = NULL, university_id = NULL, gender = NULL, booking_time = NULL WHERE seat_number = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $seat_number);
+    
+    if ($stmt->execute()) {
+        $action_message = "Seat $seat_number booking removed successfully!";
+        $action_type = "success";
+    } else {
+        $action_message = "Error removing seat booking: " . $conn->error;
+        $action_type = "danger";
+    }
+    $stmt->close();
+}
+
+// Replace seat booking
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['replace_seat'])) {
+    $old_seat = $_POST['old_seat'];
+    $new_seat = $_POST['new_seat'];
+    $passenger_name = $_POST['passenger_name'];
+    $university_id = $_POST['university_id'];
+    $gender = $_POST['gender'];
+    
+    // Start transaction
+    $conn->begin_transaction();
+    
+    try {
+        // Free the old seat
+        $free_sql = "UPDATE seats SET is_booked = FALSE, passenger_name = NULL, university_id = NULL, gender = NULL, booking_time = NULL WHERE seat_number = ?";
+        $free_stmt = $conn->prepare($free_sql);
+        $free_stmt->bind_param("s", $old_seat);
+        $free_stmt->execute();
+        $free_stmt->close();
+        
+        // Book the new seat
+        $book_sql = "UPDATE seats SET is_booked = TRUE, passenger_name = ?, university_id = ?, gender = ?, booking_time = NOW() WHERE seat_number = ?";
+        $book_stmt = $conn->prepare($book_sql);
+        $book_stmt->bind_param("ssss", $passenger_name, $university_id, $gender, $new_seat);
+        $book_stmt->execute();
+        $book_stmt->close();
+        
+        $conn->commit();
+        $action_message = "Seat successfully replaced from $old_seat to $new_seat for $passenger_name!";
+        $action_type = "success";
+    } catch (Exception $e) {
+        $conn->rollback();
+        $action_message = "Error replacing seat: " . $e->getMessage();
+        $action_type = "danger";
+    }
+}
+
 // Fetch all students with their fee status
 $students_sql = "SELECT s.*, 
                 MAX(CASE WHEN m.month_name = 'September' THEN fp.status END) as sep_status,
@@ -168,6 +222,10 @@ $students_result = $conn->query($students_sql);
 // Fetch all booked seats
 $seats_sql = "SELECT * FROM seats WHERE is_booked = TRUE ORDER BY seat_number";
 $seats_result = $conn->query($seats_sql);
+
+// Fetch all available seats for replacement
+$available_seats_sql = "SELECT * FROM seats WHERE is_booked = FALSE ORDER BY seat_number";
+$available_seats_result = $conn->query($available_seats_sql);
 
 // Get months for fee management
 $months_sql = "SELECT * FROM months";
@@ -197,6 +255,12 @@ $months_result = $conn->query($months_sql);
         .table-responsive {
             max-height: 600px;
             overflow-y: auto;
+        }
+        .bg-pink {
+            background-color: #ff66b2 !important;
+        }
+        .seat-actions {
+            min-width: 200px;
         }
     </style>
 </head>
@@ -323,7 +387,7 @@ $months_result = $conn->query($months_sql);
             <div class="tab-pane fade" id="seats" role="tabpanel">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0"><i class="fas fa-chair"></i> Currently Booked Seats</h5>
+                        <h5 class="card-title mb-0"><i class="fas fa-chair"></i> Currently Booked Seats - Management</h5>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
@@ -335,6 +399,7 @@ $months_result = $conn->query($months_sql);
                                         <th>University ID</th>
                                         <th>Gender</th>
                                         <th>Booking Time</th>
+                                        <th class="seat-actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -349,6 +414,24 @@ $months_result = $conn->query($months_sql);
                                             </span>
                                         </td>
                                         <td><?php echo $seat['booking_time']; ?></td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="?remove_seat=<?php echo $seat['seat_number']; ?>" 
+                                                   class="btn btn-danger"
+                                                   onclick="return confirm('Are you sure you want to remove this seat booking?')">
+                                                    <i class="fas fa-times"></i> Remove
+                                                </a>
+                                                <button type="button" class="btn btn-warning" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#replaceModal"
+                                                        data-seat-number="<?php echo $seat['seat_number']; ?>"
+                                                        data-passenger-name="<?php echo $seat['passenger_name']; ?>"
+                                                        data-university-id="<?php echo $seat['university_id']; ?>"
+                                                        data-gender="<?php echo $seat['gender']; ?>">
+                                                    <i class="fas fa-exchange-alt"></i> Replace
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                     <?php endwhile; ?>
                                 </tbody>
@@ -441,6 +524,55 @@ $months_result = $conn->query($months_sql);
         </div>
     </div>
 
+    <!-- Replace Seat Modal -->
+    <div class="modal fade" id="replaceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Replace Seat Booking</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="old_seat" id="replace_old_seat">
+                    <input type="hidden" name="passenger_name" id="replace_passenger_name">
+                    <input type="hidden" name="university_id" id="replace_university_id">
+                    <input type="hidden" name="gender" id="replace_gender">
+                    
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Current Seat</label>
+                            <input type="text" class="form-control" id="replace_current_seat" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Passenger</label>
+                            <input type="text" class="form-control" id="replace_current_passenger" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_seat" class="form-label">New Seat</label>
+                            <select class="form-select" id="new_seat" name="new_seat" required>
+                                <option value="">Select new seat...</option>
+                                <?php while ($available_seat = $available_seats_result->fetch_assoc()): ?>
+                                    <option value="<?php echo $available_seat['seat_number']; ?>">
+                                        <?php echo $available_seat['seat_number']; ?> (Available)
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> This will move the passenger from the current seat to the new selected seat.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="replace_seat" class="btn btn-warning">
+                            <i class="fas fa-exchange-alt"></i> Replace Seat
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Fee modal functionality
@@ -457,6 +589,24 @@ $months_result = $conn->query($months_sql);
             const currentStatus = button.getAttribute('data-current-status');
             const statusSelect = document.querySelector('select[name="status"]');
             statusSelect.value = currentStatus;
+        });
+
+        // Replace seat modal functionality
+        const replaceModal = document.getElementById('replaceModal');
+        replaceModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            
+            const seatNumber = button.getAttribute('data-seat-number');
+            const passengerName = button.getAttribute('data-passenger-name');
+            const universityId = button.getAttribute('data-university-id');
+            const gender = button.getAttribute('data-gender');
+            
+            document.getElementById('replace_old_seat').value = seatNumber;
+            document.getElementById('replace_passenger_name').value = passengerName;
+            document.getElementById('replace_university_id').value = universityId;
+            document.getElementById('replace_gender').value = gender;
+            document.getElementById('replace_current_seat').value = seatNumber;
+            document.getElementById('replace_current_passenger').value = passengerName;
         });
 
         // Logout confirmation
