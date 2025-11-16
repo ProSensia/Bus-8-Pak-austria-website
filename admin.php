@@ -71,13 +71,19 @@ if (!isset($_SESSION['admin_logged_in'])) {
 $action_message = '';
 $action_type = '';
 
-// Add new student
+// Add new student with fee management
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_student'])) {
     $sno = $_POST['sno'];
     $name = $_POST['name'];
     $university_id = $_POST['university_id'];
     $semester = $_POST['semester'];
     $category = $_POST['category'];
+    
+    // Get fee status from form
+    $sep_fee = $_POST['sep_fee'];
+    $oct_fee = $_POST['oct_fee'];
+    $nov_fee = $_POST['nov_fee'];
+    $dec_fee = $_POST['dec_fee'];
     
     $sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
@@ -86,18 +92,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_student'])) {
     if ($stmt->execute()) {
         $student_id = $stmt->insert_id;
         
-        // Add fee payments for all months as Pending
-        $month_sql = "SELECT id FROM months";
-        $month_result = $conn->query($month_sql);
-        while ($month = $month_result->fetch_assoc()) {
-            $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Pending')";
+        // Add fee payments with status from form
+        $fee_data = [
+            1 => $sep_fee, // September
+            2 => $oct_fee, // October  
+            3 => $nov_fee, // November
+            4 => $dec_fee  // December
+        ];
+        
+        foreach ($fee_data as $month_id => $status) {
+            $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
             $fee_stmt = $conn->prepare($fee_sql);
-            $fee_stmt->bind_param("ii", $student_id, $month['id']);
+            $fee_stmt->bind_param("iis", $student_id, $month_id, $status);
             $fee_stmt->execute();
             $fee_stmt->close();
         }
         
-        $action_message = "Student added successfully!";
+        $action_message = "Student added successfully with fee data!";
         $action_type = "success";
     } else {
         $action_message = "Error adding student: " . $conn->error;
@@ -124,6 +135,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_fee'])) {
         $action_type = "danger";
     }
     $stmt->close();
+}
+
+// Bulk update fees
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_update_fees'])) {
+    $student_id = $_POST['bulk_student_id'];
+    $sep_status = $_POST['bulk_sep_fee'];
+    $oct_status = $_POST['bulk_oct_fee'];
+    $nov_status = $_POST['bulk_nov_fee'];
+    $dec_status = $_POST['bulk_dec_fee'];
+    
+    $fee_data = [
+        1 => $sep_status,
+        2 => $oct_status,
+        3 => $nov_status,
+        4 => $dec_status
+    ];
+    
+    $success = true;
+    foreach ($fee_data as $month_id => $status) {
+        $sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sii", $status, $student_id, $month_id);
+        if (!$stmt->execute()) {
+            $success = false;
+        }
+        $stmt->close();
+    }
+    
+    if ($success) {
+        $action_message = "All fee status updated successfully!";
+        $action_type = "success";
+    } else {
+        $action_message = "Error updating some fee status!";
+        $action_type = "warning";
+    }
 }
 
 // Delete student
@@ -262,6 +308,16 @@ $months_result = $conn->query($months_sql);
         .seat-actions {
             min-width: 200px;
         }
+        .fee-card {
+            transition: all 0.3s ease;
+        }
+        .fee-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .bulk-fee-btn {
+            min-width: 120px;
+        }
     </style>
 </head>
 <body>
@@ -368,11 +424,24 @@ $months_result = $conn->query($months_sql);
                                         <?php endforeach; ?>
                                         
                                         <td>
-                                            <a href="?delete_student=<?php echo $student['id']; ?>" 
-                                               class="btn btn-danger btn-sm"
-                                               onclick="return confirm('Are you sure you want to delete this student?')">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </a>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-info bulk-fee-btn"
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#bulkFeeModal"
+                                                        data-student-id="<?php echo $student['id']; ?>"
+                                                        data-student-name="<?php echo $student['name']; ?>"
+                                                        data-sep-status="<?php echo $months['sep']; ?>"
+                                                        data-oct-status="<?php echo $months['oct']; ?>"
+                                                        data-nov-status="<?php echo $months['nov']; ?>"
+                                                        data-dec-status="<?php echo $months['dec']; ?>">
+                                                    <i class="fas fa-edit"></i> All Fees
+                                                </button>
+                                                <a href="?delete_student=<?php echo $student['id']; ?>" 
+                                                   class="btn btn-danger"
+                                                   onclick="return confirm('Are you sure you want to delete this student?')">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                     <?php endwhile; ?>
@@ -445,11 +514,12 @@ $months_result = $conn->query($months_sql);
             <div class="tab-pane fade" id="add" role="tabpanel">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0"><i class="fas fa-plus"></i> Add New Student</h5>
+                        <h5 class="card-title mb-0"><i class="fas fa-plus"></i> Add New Student with Fee Management</h5>
                     </div>
                     <div class="card-body">
                         <form method="POST">
                             <div class="row g-3">
+                                <!-- Student Basic Information -->
                                 <div class="col-md-2">
                                     <label for="sno" class="form-label">Serial No</label>
                                     <input type="number" class="form-control" id="sno" name="sno" required>
@@ -473,9 +543,94 @@ $months_result = $conn->query($months_sql);
                                         <option value="Faculty">Faculty</option>
                                     </select>
                                 </div>
+                                
+                                <!-- Fee Status Section -->
                                 <div class="col-12">
-                                    <button type="submit" name="add_student" class="btn btn-success">
-                                        <i class="fas fa-save"></i> Add Student
+                                    <div class="card mt-3">
+                                        <div class="card-header bg-info text-white">
+                                            <h6 class="card-title mb-0">
+                                                <i class="fas fa-money-bill-wave me-2"></i>Fee Payment Status Management
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row g-3">
+                                                <div class="col-md-3">
+                                                    <div class="card h-100 fee-card border-warning">
+                                                        <div class="card-header text-center py-2 bg-warning text-dark">
+                                                            <strong>September</strong>
+                                                        </div>
+                                                        <div class="card-body text-center p-2">
+                                                            <select class="form-select" name="sep_fee" required onchange="updateFeeBadge(this, 'sep-badge')">
+                                                                <option value="Pending">Pending</option>
+                                                                <option value="Submitted">Submitted</option>
+                                                            </select>
+                                                            <span id="sep-badge" class="badge bg-warning mt-2">Pending</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="card h-100 fee-card border-warning">
+                                                        <div class="card-header text-center py-2 bg-warning text-dark">
+                                                            <strong>October</strong>
+                                                        </div>
+                                                        <div class="card-body text-center p-2">
+                                                            <select class="form-select" name="oct_fee" required onchange="updateFeeBadge(this, 'oct-badge')">
+                                                                <option value="Pending">Pending</option>
+                                                                <option value="Submitted">Submitted</option>
+                                                            </select>
+                                                            <span id="oct-badge" class="badge bg-warning mt-2">Pending</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="card h-100 fee-card border-warning">
+                                                        <div class="card-header text-center py-2 bg-warning text-dark">
+                                                            <strong>November</strong>
+                                                        </div>
+                                                        <div class="card-body text-center p-2">
+                                                            <select class="form-select" name="nov_fee" required onchange="updateFeeBadge(this, 'nov-badge')">
+                                                                <option value="Pending">Pending</option>
+                                                                <option value="Submitted">Submitted</option>
+                                                            </select>
+                                                            <span id="nov-badge" class="badge bg-warning mt-2">Pending</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="card h-100 fee-card border-warning">
+                                                        <div class="card-header text-center py-2 bg-warning text-dark">
+                                                            <strong>December</strong>
+                                                        </div>
+                                                        <div class="card-body text-center p-2">
+                                                            <select class="form-select" name="dec_fee" required onchange="updateFeeBadge(this, 'dec-badge')">
+                                                                <option value="Pending">Pending</option>
+                                                                <option value="Submitted">Submitted</option>
+                                                            </select>
+                                                            <span id="dec-badge" class="badge bg-warning mt-2">Pending</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <div class="d-flex gap-2 flex-wrap">
+                                                        <button type="button" class="btn btn-success btn-sm" onclick="setAllFees('Submitted')">
+                                                            <i class="fas fa-check-circle"></i> Mark All as Submitted
+                                                        </button>
+                                                        <button type="button" class="btn btn-warning btn-sm" onclick="setAllFees('Pending')">
+                                                            <i class="fas fa-clock"></i> Mark All as Pending
+                                                        </button>
+                                                        <button type="button" class="btn btn-info btn-sm" onclick="toggleAllFees()">
+                                                            <i class="fas fa-sync-alt"></i> Toggle All
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-12">
+                                    <button type="submit" name="add_student" class="btn btn-success btn-lg">
+                                        <i class="fas fa-save"></i> Add Student with Fee Data
                                     </button>
                                 </div>
                             </div>
@@ -524,6 +679,74 @@ $months_result = $conn->query($months_sql);
         </div>
     </div>
 
+    <!-- Bulk Fee Update Modal -->
+    <div class="modal fade" id="bulkFeeModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Bulk Update All Fees</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="bulk_student_id" id="bulk_student_id">
+                    
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Student</label>
+                            <input type="text" class="form-control" id="bulk_student_name" readonly>
+                        </div>
+                        
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">September Fee</label>
+                                <select class="form-select" name="bulk_sep_fee" required>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Submitted">Submitted</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">October Fee</label>
+                                <select class="form-select" name="bulk_oct_fee" required>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Submitted">Submitted</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">November Fee</label>
+                                <select class="form-select" name="bulk_nov_fee" required>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Submitted">Submitted</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">December Fee</label>
+                                <select class="form-select" name="bulk_dec_fee" required>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Submitted">Submitted</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-success btn-sm" onclick="setBulkAllFees('Submitted')">
+                                Mark All as Submitted
+                            </button>
+                            <button type="button" class="btn btn-warning btn-sm" onclick="setBulkAllFees('Pending')">
+                                Mark All as Pending
+                            </button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" name="bulk_update_fees" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Update All Fees
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Replace Seat Modal -->
     <div class="modal fade" id="replaceModal" tabindex="-1">
         <div class="modal-dialog">
@@ -551,7 +774,10 @@ $months_result = $conn->query($months_sql);
                             <label for="new_seat" class="form-label">New Seat</label>
                             <select class="form-select" id="new_seat" name="new_seat" required>
                                 <option value="">Select new seat...</option>
-                                <?php while ($available_seat = $available_seats_result->fetch_assoc()): ?>
+                                <?php 
+                                // Reset pointer for available seats
+                                $available_seats_result->data_seek(0);
+                                while ($available_seat = $available_seats_result->fetch_assoc()): ?>
                                     <option value="<?php echo $available_seat['seat_number']; ?>">
                                         <?php echo $available_seat['seat_number']; ?> (Available)
                                     </option>
@@ -587,8 +813,23 @@ $months_result = $conn->query($months_sql);
             
             // Set current status in select
             const currentStatus = button.getAttribute('data-current-status');
-            const statusSelect = document.querySelector('select[name="status"]');
+            const statusSelect = document.querySelector('#feeModal select[name="status"]');
             statusSelect.value = currentStatus;
+        });
+
+        // Bulk fee modal functionality
+        const bulkFeeModal = document.getElementById('bulkFeeModal');
+        bulkFeeModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            
+            document.getElementById('bulk_student_id').value = button.getAttribute('data-student-id');
+            document.getElementById('bulk_student_name').value = button.getAttribute('data-student-name');
+            
+            // Set current status for all months
+            document.querySelector('select[name="bulk_sep_fee"]').value = button.getAttribute('data-sep-status');
+            document.querySelector('select[name="bulk_oct_fee"]').value = button.getAttribute('data-oct-status');
+            document.querySelector('select[name="bulk_nov_fee"]').value = button.getAttribute('data-nov-status');
+            document.querySelector('select[name="bulk_dec_fee"]').value = button.getAttribute('data-dec-status');
         });
 
         // Replace seat modal functionality
@@ -609,11 +850,58 @@ $months_result = $conn->query($months_sql);
             document.getElementById('replace_current_passenger').value = passengerName;
         });
 
+        // Fee management functions
+        function updateFeeBadge(selectElement, badgeId) {
+            const badge = document.getElementById(badgeId);
+            if (selectElement.value === 'Submitted') {
+                badge.className = 'badge bg-success mt-2';
+                badge.textContent = 'Submitted';
+                selectElement.parentElement.parentElement.className = 'card h-100 fee-card border-success';
+                selectElement.parentElement.parentElement.querySelector('.card-header').className = 'card-header text-center py-2 bg-success text-white';
+            } else {
+                badge.className = 'badge bg-warning mt-2';
+                badge.textContent = 'Pending';
+                selectElement.parentElement.parentElement.className = 'card h-100 fee-card border-warning';
+                selectElement.parentElement.parentElement.querySelector('.card-header').className = 'card-header text-center py-2 bg-warning text-dark';
+            }
+        }
+
+        function setAllFees(status) {
+            const feeSelects = document.querySelectorAll('select[name$="_fee"]');
+            feeSelects.forEach(select => {
+                select.value = status;
+                const badgeId = select.name.replace('_fee', '-badge');
+                updateFeeBadge(select, badgeId);
+            });
+        }
+
+        function setBulkAllFees(status) {
+            document.querySelector('select[name="bulk_sep_fee"]').value = status;
+            document.querySelector('select[name="bulk_oct_fee"]').value = status;
+            document.querySelector('select[name="bulk_nov_fee"]').value = status;
+            document.querySelector('select[name="bulk_dec_fee"]').value = status;
+        }
+
+        function toggleAllFees() {
+            const feeSelects = document.querySelectorAll('select[name$="_fee"]');
+            const allSubmitted = Array.from(feeSelects).every(select => select.value === 'Submitted');
+            setAllFees(allSubmitted ? 'Pending' : 'Submitted');
+        }
+
         // Logout confirmation
         document.querySelector('a[href="?logout"]').addEventListener('click', function(e) {
             if (!confirm('Are you sure you want to logout?')) {
                 e.preventDefault();
             }
+        });
+
+        // Initialize fee badges on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const feeSelects = document.querySelectorAll('select[name$="_fee"]');
+            feeSelects.forEach(select => {
+                const badgeId = select.name.replace('_fee', '-badge');
+                updateFeeBadge(select, badgeId);
+            });
         });
     </script>
 </body>
