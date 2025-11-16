@@ -351,7 +351,7 @@ if ($result->num_rows > 0) {
                         }
                     }
                     // Row 8: Back row with 5 seats
-                    else if ($row_num == '8') {
+                    else if ($row_num == '9') {
                         // All 5 seats in one row
                         foreach ($row_seats as $seat) {
                             $seat_class = 'available';
