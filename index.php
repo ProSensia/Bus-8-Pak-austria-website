@@ -304,12 +304,14 @@ if ($result->num_rows > 0) {
                     }
                     // Row 3: Door layout
                     else if ($row_num == '3') {
-                        // Left side seats (if any for row 3, you can skip if none)
-                        // Walking / Door area
-                        echo '<div class="walking-area door-area">DOOR</div>'; // Combine walking + door
-                
+                        // Door area
+                        echo '<div class="door-area">DOOR</div>';
+
+                        // Walking area
+                        echo '<div class="walking-area"></div>';
+
                         // Right side seats (3A, 3B)
-                        foreach ($row_seats as $seat) {
+                        foreach (array_slice($row_seats, 0, 2) as $seat) {
                             $seat_class = 'available';
                             if ($seat['is_booked']) {
                                 $seat_class = 'booked';
@@ -320,7 +322,7 @@ if ($result->num_rows > 0) {
                             }
 
                             echo '<div class="seat ' . $seat_class . '" data-seat="' . $seat['seat_number'] . '" 
-             data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
+                     data-booked="' . ($seat['is_booked'] ? 'true' : 'false') . '">';
                             echo $seat['seat_number'];
                             if ($seat['is_booked']) {
                                 echo '<i class="fas fa-lock"></i>';
@@ -331,7 +333,6 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
                     }
-
                     // Row 8: Back row with 5 seats
                     else if ($row_num == '8') {
                         // All 5 seats in one row
