@@ -202,7 +202,7 @@
 
 /* Special Grid Items */
 .driver-area {
-    grid-column: 4 / span 2;
+    grid-column: 4 / span 3;
     background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     color: white;
     display: flex;
