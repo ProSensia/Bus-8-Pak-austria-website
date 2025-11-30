@@ -71,6 +71,78 @@ if (!isset($_SESSION['admin_logged_in'])) {
 $action_message = '';
 $action_type = '';
 
+// Download Sample Excel File
+if (isset($_GET['download_sample'])) {
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment;filename="sample_students_template.xls"');
+    header('Cache-Control: max-age=0');
+    
+    // Get months dynamically
+    $months_sql = "SELECT * FROM months ORDER BY id";
+    $months_result = $conn->query($months_sql);
+    $months = [];
+    while ($month = $months_result->fetch_assoc()) {
+        $months[] = $month;
+    }
+    
+    // Create sample data
+    echo "Sno\tName\tUniversity ID\tSemester\tCategory\t";
+    foreach ($months as $month) {
+        echo $month['month_name'] . "\t";
+    }
+    echo "\n";
+    
+    // Sample student data
+    $sample_students = [
+        [1, "John Doe", "UNI001", "5th", "Student"],
+        [2, "Jane Smith", "UNI002", "4th", "Student"],
+        [3, "Dr. Robert Brown", "UNI003", "N/A", "Faculty"]
+    ];
+    
+    foreach ($sample_students as $student) {
+        echo $student[0] . "\t"; // Sno
+        echo $student[1] . "\t"; // Name
+        echo $student[2] . "\t"; // University ID
+        echo $student[3] . "\t"; // Semester
+        echo $student[4] . "\t"; // Category
+        
+        // Add sample fee status (mix of Submitted and Pending)
+        foreach ($months as $index => $month) {
+            $status = ($index % 2 == 0) ? "Submitted" : "Pending";
+            echo $status . "\t";
+        }
+        echo "\n";
+    }
+    
+    // Add instructions row
+    echo "\n\nINSTRUCTIONS:\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "1. Do not change the column headers\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "2. Status can be 'Submitted' or 'Pending'\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "3. Keep the same format for data\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "4. Save as .xls or .xlsx format\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    
+    exit;
+}
+
 // Export to Excel
 if (isset($_GET['export_excel'])) {
     header('Content-Type: application/vnd.ms-excel');
@@ -529,8 +601,8 @@ $available_seats_result = $conn->query($available_seats_sql);
         <!-- Export/Import Section -->
         <div class="export-import-section">
             <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header bg-success text-white">
                             <h6 class="card-title mb-0"><i class="fas fa-download"></i> Export Data</h6>
                         </div>
@@ -542,13 +614,26 @@ $available_seats_result = $conn->query($available_seats_sql);
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-warning text-dark">
+                            <h6 class="card-title mb-0"><i class="fas fa-file-download"></i> Download Template</h6>
+                        </div>
+                        <div class="card-body">
+                            <p>Download sample Excel template with proper format for importing.</p>
+                            <a href="?download_sample" class="btn btn-warning">
+                                <i class="fas fa-download"></i> Download Sample
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header bg-primary text-white">
                             <h6 class="card-title mb-0"><i class="fas fa-upload"></i> Import Data</h6>
                         </div>
                         <div class="card-body">
-                            <p>Import student data from Excel file. Format: Sno, Name, University ID, Semester, Category, [Months...]</p>
+                            <p>Import student data from Excel file using the template format.</p>
                             <form method="POST" enctype="multipart/form-data">
                                 <div class="input-group">
                                     <input type="file" class="form-control" name="excel_file" accept=".xls,.xlsx" required>
@@ -558,6 +643,20 @@ $available_seats_result = $conn->query($available_seats_sql);
                                 </div>
                             </form>
                         </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> Import Instructions:</h6>
+                        <ul class="mb-0">
+                            <li>Download the sample template first to understand the format</li>
+                            <li>First 5 columns must be: Sno, Name, University ID, Semester, Category</li>
+                            <li>Subsequent columns should be month names</li>
+                            <li>Status values should be either 'Submitted' or 'Pending'</li>
+                            <li>Keep the same column headers as in the template</li>
+                        </ul>
                     </div>
                 </div>
             </div>
