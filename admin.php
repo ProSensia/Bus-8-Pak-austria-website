@@ -2,6 +2,7 @@
 include 'connection.php';
 session_start();
 
+// Remove the problematic MySQL system variables that cause errors
 // Simple authentication
 $admin_username = "momin";
 $admin_password = "mominkhan@123";
@@ -704,6 +705,7 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
             </div>
         <?php endif; ?>
 
+        <!-- Rest of your HTML code remains exactly the same -->
         <!-- Export/Import Section -->
         <div class="export-import-section">
             <div class="row">
