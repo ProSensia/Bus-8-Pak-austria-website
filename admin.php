@@ -2,7 +2,6 @@
 include 'connection.php';
 session_start();
 
-// Remove the problematic MySQL system variables that cause errors
 // Simple authentication
 $admin_username = "momin";
 $admin_password = "mominkhan@123";
@@ -334,63 +333,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
     $voucher_result = $voucher_stmt->get_result();
     $voucher = $voucher_result->fetch_assoc();
     
-    if ($action === 'approve') {
-        // Update fee payments status - SIMPLIFIED VERSION
-        $months = explode(',', $voucher['months_applied']);
-        foreach ($months as $month_name) {
-            // Get month ID
-            $month_sql = "SELECT id FROM months WHERE month_name = ?";
-            $month_stmt = $conn->prepare($month_sql);
-            $month_stmt->bind_param("s", $month_name);
-            $month_stmt->execute();
-            $month_result = $month_stmt->get_result();
+    if ($voucher) { // Check if voucher exists
+        if ($action === 'approve') {
+            // Update fee payments status - FIXED VERSION
+            $months_applied = $voucher['months_applied'];
             
-            if ($month_result->num_rows > 0) {
-                $month_data = $month_result->fetch_assoc();
-                $month_id = $month_data['id'];
+            // Make sure months_applied is not empty and is a string
+            if (!empty($months_applied) && is_string($months_applied)) {
+                $months = explode(',', $months_applied);
                 
-                // Use INSERT ... ON DUPLICATE KEY UPDATE for simplicity
-                $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted') 
-                           ON DUPLICATE KEY UPDATE status = 'Submitted'";
-                $fee_stmt = $conn->prepare($fee_sql);
-                $fee_stmt->bind_param("ii", $voucher['student_id'], $month_id);
-                $fee_stmt->execute();
-                $fee_stmt->close();
+                // Process each month
+                foreach ($months as $month_name) {
+                    // Trim any whitespace from month name
+                    $month_name = trim($month_name);
+                    
+                    if (!empty($month_name)) {
+                        // Get month ID
+                        $month_sql = "SELECT id FROM months WHERE month_name = ?";
+                        $month_stmt = $conn->prepare($month_sql);
+                        $month_stmt->bind_param("s", $month_name);
+                        $month_stmt->execute();
+                        $month_result = $month_stmt->get_result();
+                        
+                        if ($month_result->num_rows > 0) {
+                            $month_data = $month_result->fetch_assoc();
+                            $month_id = $month_data['id'];
+                            
+                            // Use INSERT ... ON DUPLICATE KEY UPDATE for simplicity
+                            $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted') 
+                                       ON DUPLICATE KEY UPDATE status = 'Submitted'";
+                            $fee_stmt = $conn->prepare($fee_sql);
+                            $fee_stmt->bind_param("ii", $voucher['student_id'], $month_id);
+                            $fee_stmt->execute();
+                            $fee_stmt->close();
+                        }
+                        $month_stmt->close();
+                    }
+                }
             }
-            $month_stmt->close();
+            
+            $status = 'approved';
+            $action_message = "Voucher approved successfully! Fee status updated.";
+        } else {
+            $status = 'rejected';
+            $action_message = "Voucher rejected.";
         }
         
-        $status = 'approved';
-        $action_message = "Voucher approved successfully! Fee status updated.";
+        // Update voucher status
+        $update_sql = "UPDATE fee_vouchers SET status = ?, admin_notes = ?, processed_date = NOW() WHERE id = ?";
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("ssi", $status, $admin_notes, $voucher_id);
+        
+        if ($update_stmt->execute()) {
+            // Log admin action
+            $student_sql = "SELECT name FROM students WHERE id = ?";
+            $student_stmt = $conn->prepare($student_sql);
+            $student_stmt->bind_param("i", $voucher['student_id']);
+            $student_stmt->execute();
+            $student_result = $student_stmt->get_result();
+            
+            if ($student_result->num_rows > 0) {
+                $student_data = $student_result->fetch_assoc();
+                
+                $log_sql = "INSERT INTO admin_logs (admin_username, action, target_student, ip_address) VALUES (?, ?, ?, ?)";
+                $log_stmt = $conn->prepare($log_sql);
+                $log_action = "Voucher $status for " . $student_data['name'] . " (Months: " . $voucher['months_applied'] . ")";
+                $log_stmt->bind_param("ssss", $_SESSION['admin_username'], $log_action, $student_data['name'], $_SERVER['REMOTE_ADDR']);
+                $log_stmt->execute();
+                $log_stmt->close();
+            }
+            $student_stmt->close();
+            
+            $action_type = "success";
+        } else {
+            $action_message = "Error updating voucher status: " . $conn->error;
+            $action_type = "danger";
+        }
+        $update_stmt->close();
     } else {
-        $status = 'rejected';
-        $action_message = "Voucher rejected.";
+        $action_message = "Voucher not found!";
+        $action_type = "danger";
     }
-    
-    // Update voucher status
-    $update_sql = "UPDATE fee_vouchers SET status = ?, admin_notes = ?, processed_date = NOW() WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("ssi", $status, $admin_notes, $voucher_id);
-    $update_stmt->execute();
-    $update_stmt->close();
-    
-    // Log admin action
-    $student_sql = "SELECT name FROM students WHERE id = ?";
-    $student_stmt = $conn->prepare($student_sql);
-    $student_stmt->bind_param("i", $voucher['student_id']);
-    $student_stmt->execute();
-    $student_result = $student_stmt->get_result();
-    $student_data = $student_result->fetch_assoc();
-    
-    $log_sql = "INSERT INTO admin_logs (admin_username, action, target_student, ip_address) VALUES (?, ?, ?, ?)";
-    $log_stmt = $conn->prepare($log_sql);
-    $log_action = "Voucher $status for " . $student_data['name'] . " (Months: " . $voucher['months_applied'] . ")";
-    $log_stmt->bind_param("ssss", $_SESSION['admin_username'], $log_action, $student_data['name'], $_SERVER['REMOTE_ADDR']);
-    $log_stmt->execute();
-    $log_stmt->close();
-    
-    $action_message = $action_message;
-    $action_type = "success";
+    $voucher_stmt->close();
 }
 
 // Add new student with fee management
@@ -680,7 +704,6 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
             </div>
         <?php endif; ?>
 
-        <!-- Rest of your HTML code remains exactly the same -->
         <!-- Export/Import Section -->
         <div class="export-import-section">
             <div class="row">
