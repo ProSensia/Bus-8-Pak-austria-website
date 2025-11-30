@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
             $fee_status = $fee_payments;
             $message = "Student verified successfully!";
             $message_type = "success";
-            
+
         } else {
             $message = "University ID not found!";
             $message_type = "danger";
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
         $student_info = $_SESSION['verified_student'];
         $months_applied = implode(',', $_POST['months'] ?? []);
         $voucher_image = $_FILES['voucher_image'];
-        
+
         // Validate input
         if (empty($months_applied)) {
             $message = "Please select at least one month!";
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
             // Validate file type
             $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
             $file_type = mime_content_type($voucher_image['tmp_name']);
-            
+
             if (!in_array($file_type, $allowed_types)) {
                 $message = "Only JPG, PNG, and GIF images are allowed!";
                 $message_type = "warning";
@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
                     'browser' => get_browser(null, true)['browser'] ?? 'Unknown',
                     'platform' => get_browser(null, true)['platform'] ?? 'Unknown'
                 ]);
-                
+
                 // Get location data (simplified - in production use geolocation API)
                 $location_data = json_encode([
                     'ip' => $ip_address,
@@ -119,11 +119,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
                             VALUES (?, ?, ?, ?, ?, ?, ?)";
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("issssss", $student_info['id'], $months_applied, $filename, $mac_address, $ip_address, $location_data, $device_info);
-                    
+
                     if ($stmt->execute()) {
                         $message = "Fee voucher submitted successfully! It will be verified within 24 hours.";
                         $message_type = "success";
-                        
+
                         // Update session to reflect pending status
                         foreach (explode(',', $months_applied) as $month) {
                             $fee_status[$month] = 'Pending Verification';
@@ -262,9 +262,10 @@ if ($result->num_rows > 0) {
 }
 
 // Function to get MAC address
-function getMacAddress() {
+function getMacAddress()
+{
     $mac = 'Unknown';
-    
+
     // For Windows
     if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
         @exec('ipconfig /all', $output);
@@ -274,7 +275,7 @@ function getMacAddress() {
                 break;
             }
         }
-    } 
+    }
     // For Linux/Unix
     else {
         @exec('/sbin/ifconfig -a', $output);
@@ -285,12 +286,13 @@ function getMacAddress() {
             }
         }
     }
-    
+
     return $mac;
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -302,23 +304,27 @@ function getMacAddress() {
             max-width: 1200px;
             margin: 0 auto;
         }
+
         .bus-grid {
             display: flex;
             flex-direction: column;
             gap: 10px;
             margin: 20px 0;
         }
+
         .grid-row {
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
         .row-label {
             width: 30px;
             text-align: center;
             font-weight: bold;
             color: #666;
         }
+
         .seat {
             width: 80px;
             height: 80px;
@@ -333,35 +339,44 @@ function getMacAddress() {
             position: relative;
             font-weight: bold;
         }
+
         .seat.available {
             background-color: #c0c0c0;
             border-color: #999;
         }
+
         .seat.booked {
             background-color: #6c757d;
             color: white;
             cursor: not-allowed;
         }
+
         .seat.booked.male {
             background-color: #4d79ff;
         }
+
         .seat.booked.female {
             background-color: #ff66b2;
         }
+
         .seat.selected {
             border-color: #28a745;
             box-shadow: 0 0 10px #28a745;
         }
+
         .seat:hover:not(.booked) {
             transform: scale(1.05);
             border-color: #007bff;
         }
+
         .passenger-name {
             font-size: 10px;
             margin-top: 5px;
             text-align: center;
         }
-        .driver-area, .door-area {
+
+        .driver-area,
+        .door-area {
             width: 100px;
             height: 80px;
             display: flex;
@@ -373,12 +388,14 @@ function getMacAddress() {
             font-weight: bold;
             font-size: 14px;
         }
+
         .walking-area {
             flex: 1;
             height: 10px;
             background-color: #f8f9fa;
             border: 1px dashed #dee2e6;
         }
+
         .legend {
             display: flex;
             justify-content: center;
@@ -386,23 +403,27 @@ function getMacAddress() {
             margin: 20px 0;
             flex-wrap: wrap;
         }
+
         .legend-item {
             display: flex;
             align-items: center;
             gap: 8px;
         }
+
         .legend-color {
             width: 20px;
             height: 20px;
             border-radius: 4px;
             border: 1px solid #ddd;
         }
+
         .fee-status {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
             margin-top: 10px;
         }
+
         .fee-month {
             display: flex;
             justify-content: space-between;
@@ -411,20 +432,34 @@ function getMacAddress() {
             border: 1px solid #ddd;
             border-radius: 5px;
         }
+
         .fee-badge {
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 12px;
             font-weight: bold;
         }
-        .badge-submitted { background-color: #28a745; color: white; }
-        .badge-pending { background-color: #ffc107; color: black; }
-        .badge-verification { background-color: #17a2b8; color: white; }
-        
+
+        .badge-submitted {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .badge-pending {
+            background-color: #ffc107;
+            color: black;
+        }
+
+        .badge-verification {
+            background-color: #17a2b8;
+            color: white;
+        }
+
         .voucher-section {
             border-left: 4px solid #007bff;
             background-color: #f8f9fa;
         }
+
         .month-checkbox {
             border: 2px solid #dee2e6;
             border-radius: 5px;
@@ -433,15 +468,18 @@ function getMacAddress() {
             cursor: pointer;
             transition: all 0.3s ease;
         }
+
         .month-checkbox.selected {
             border-color: #007bff;
             background-color: #e7f3ff;
         }
+
         .month-checkbox:hover {
             border-color: #0056b3;
         }
     </style>
 </head>
+
 <body>
     <div class="container mt-4">
         <div class="bus-container">
@@ -488,9 +526,11 @@ function getMacAddress() {
                                 foreach ($months as $month) {
                                     $status = isset($fee_status[$month]) ? $fee_status[$month] : 'Pending';
                                     $badge_class = 'badge-pending';
-                                    if ($status === 'Submitted') $badge_class = 'badge-submitted';
-                                    if ($status === 'Pending Verification') $badge_class = 'badge-verification';
-                                    
+                                    if ($status === 'Submitted')
+                                        $badge_class = 'badge-submitted';
+                                    if ($status === 'Pending Verification')
+                                        $badge_class = 'badge-verification';
+
                                     echo "
                                     <div class='fee-month'>
                                         <div>$month</div>
@@ -506,62 +546,61 @@ function getMacAddress() {
 
             <!-- Fee Voucher Submission Section -->
             <?php if ($student_info && !empty($pending_months)): ?>
-            <div class="card mb-4 voucher-section">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-receipt"></i> Submit Fee Voucher</h5>
-                </div>
-                <div class="card-body">
-                    <form method="POST" enctype="multipart/form-data">
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label">Select Months to Pay:</label>
-                                <div class="months-selection">
-                                    <?php foreach ($pending_months as $month): ?>
-                                    <div class="form-check month-checkbox">
-                                        <input class="form-check-input" type="checkbox" name="months[]" 
-                                               value="<?php echo $month; ?>" id="month_<?php echo $month; ?>">
-                                        <label class="form-check-label w-100" for="month_<?php echo $month; ?>">
-                                            <strong><?php echo $month; ?> 2024</strong>
-                                            <span class="badge bg-warning float-end">Pending</span>
-                                        </label>
+                <div class="card mb-4 voucher-section">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0"><i class="fas fa-receipt"></i> Submit Fee Voucher</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" enctype="multipart/form-data">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Select Months to Pay:</label>
+                                    <div class="months-selection">
+                                        <?php foreach ($pending_months as $month): ?>
+                                            <div class="form-check month-checkbox">
+                                                <input class="form-check-input" type="checkbox" name="months[]"
+                                                    value="<?php echo $month; ?>" id="month_<?php echo $month; ?>">
+                                                <label class="form-check-label w-100" for="month_<?php echo $month; ?>">
+                                                    <strong><?php echo $month; ?> 2024</strong>
+                                                    <span class="badge bg-warning float-end">Pending</span>
+                                                </label>
+                                            </div>
+                                        <?php endforeach; ?>
                                     </div>
-                                    <?php endforeach; ?>
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="voucher_image" class="form-label">Upload Fee Voucher Image</label>
+                                    <input type="file" class="form-control" id="voucher_image" name="voucher_image"
+                                        accept="image/jpeg,image/jpg,image/png,image/gif" required>
+                                    <div class="form-text">
+                                        Upload clear image of your fee payment receipt/voucher (JPG, PNG, GIF)
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="alert alert-info">
+                                        <h6><i class="fas fa-info-circle"></i> Important Notes:</h6>
+                                        <ul class="mb-0">
+                                            <li>Your voucher will be verified within 24 hours</li>
+                                            <li>Once approved, fee status will be updated to "Submitted"</li>
+                                            <li>You can book seats only for months with "Submitted" status</li>
+                                            <li>System tracks your device information for security</li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <button type="submit" name="submit_voucher" class="btn btn-success">
+                                        <i class="fas fa-upload"></i> Submit Voucher for Verification
+                                    </button>
                                 </div>
                             </div>
-                            
-                            <div class="col-12">
-                                <label for="voucher_image" class="form-label">Upload Fee Voucher Image</label>
-                                <input type="file" class="form-control" id="voucher_image" name="voucher_image" 
-                                       accept="image/jpeg,image/jpg,image/png,image/gif" required>
-                                <div class="form-text">
-                                    Upload clear image of your fee payment receipt/voucher (JPG, PNG, GIF)
-                                </div>
-                            </div>
-                            
-                            <div class="col-12">
-                                <div class="alert alert-info">
-                                    <h6><i class="fas fa-info-circle"></i> Important Notes:</h6>
-                                    <ul class="mb-0">
-                                        <li>Your voucher will be verified within 24 hours</li>
-                                        <li>Once approved, fee status will be updated to "Submitted"</li>
-                                        <li>You can book seats only for months with "Submitted" status</li>
-                                        <li>System tracks your device information for security</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <div class="col-12">
-                                <button type="submit" name="submit_voucher" class="btn btn-success">
-                                    <i class="fas fa-upload"></i> Submit Voucher for Verification
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                 </div>
-            </div>
             <?php endif; ?>
 
-            <!-- Bus Layout -->
             <div class="bus-grid">
                 <?php
                 $current_row = '';
@@ -580,7 +619,7 @@ function getMacAddress() {
 
                     // Row 1: Special layout with driver
                     if ($row_num == '1') {
-                        // Left seats (1A, 1B)
+                        // Left seats (1A, 1B) - span 1.5 columns each
                         foreach (array_slice($row_seats, 0, 2) as $seat) {
                             $seat_class = 'available';
                             if ($seat['is_booked']) {
@@ -599,6 +638,7 @@ function getMacAddress() {
                                 if ($seat['passenger_name']) {
                                     $first_name = explode(' ', $seat['passenger_name'])[0];
                                     echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
+
                                 }
                             }
                             echo '</div>';
@@ -639,7 +679,7 @@ function getMacAddress() {
                             echo '</div>';
                         }
                     }
-                    // Row 9: Back row with 5 seats
+                    // Row 8: Back row with 5 seats
                     else if ($row_num == '9') {
                         // All 5 seats in one row
                         foreach ($row_seats as $seat) {
@@ -665,7 +705,7 @@ function getMacAddress() {
                             echo '</div>';
                         }
                     }
-                    // Regular rows (2, 4, 5, 6, 7, 8)
+                    // Regular rows (2, 4, 5, 6, 7)
                     else {
                         // Left side seats (A, B)
                         foreach (array_slice($row_seats, 0, 2) as $seat) {
@@ -691,7 +731,7 @@ function getMacAddress() {
                             echo '</div>';
                         }
 
-                        // Walking area
+                        // Walking area (must be here in DOM order)
                         echo '<div class="walking-area"></div>';
 
                         // Right side seats (C, D)
@@ -718,6 +758,8 @@ function getMacAddress() {
                             echo '</div>';
                         }
                     }
+
+
                     echo '</div>';
                 }
                 ?>
@@ -847,7 +889,7 @@ function getMacAddress() {
 
             // Add selection styling to month checkboxes
             document.querySelectorAll('.month-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('click', function(e) {
+                checkbox.addEventListener('click', function (e) {
                     if (e.target.type !== 'checkbox') {
                         const checkboxInput = this.querySelector('input[type="checkbox"]');
                         checkboxInput.checked = !checkboxInput.checked;
@@ -859,10 +901,10 @@ function getMacAddress() {
             // Get location data if available
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
-                    function(position) {
+                    function (position) {
                         console.log('Location captured:', position.coords);
                     },
-                    function(error) {
+                    function (error) {
                         console.log('Location access denied or unavailable');
                     }
                 );
@@ -876,6 +918,7 @@ function getMacAddress() {
         });
     </script>
 </body>
+
 </html>
 <?php
 $conn->close();
