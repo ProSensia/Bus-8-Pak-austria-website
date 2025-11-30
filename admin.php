@@ -71,6 +71,78 @@ if (!isset($_SESSION['admin_logged_in'])) {
 $action_message = '';
 $action_type = '';
 
+// Download Sample Excel File
+if (isset($_GET['download_sample'])) {
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment;filename="sample_students_template.xls"');
+    header('Cache-Control: max-age=0');
+    
+    // Get months dynamically
+    $months_sql = "SELECT * FROM months ORDER BY id";
+    $months_result = $conn->query($months_sql);
+    $months = [];
+    while ($month = $months_result->fetch_assoc()) {
+        $months[] = $month;
+    }
+    
+    // Create sample data
+    echo "Sno\tName\tUniversity ID\tSemester\tCategory\t";
+    foreach ($months as $month) {
+        echo $month['month_name'] . "\t";
+    }
+    echo "\n";
+    
+    // Sample student data
+    $sample_students = [
+        [1, "John Doe", "UNI001", "5th", "Student"],
+        [2, "Jane Smith", "UNI002", "4th", "Student"],
+        [3, "Dr. Robert Brown", "UNI003", "N/A", "Faculty"]
+    ];
+    
+    foreach ($sample_students as $student) {
+        echo $student[0] . "\t"; // Sno
+        echo $student[1] . "\t"; // Name
+        echo $student[2] . "\t"; // University ID
+        echo $student[3] . "\t"; // Semester
+        echo $student[4] . "\t"; // Category
+        
+        // Add sample fee status (mix of Submitted and Pending)
+        foreach ($months as $index => $month) {
+            $status = ($index % 2 == 0) ? "Submitted" : "Pending";
+            echo $status . "\t";
+        }
+        echo "\n";
+    }
+    
+    // Add instructions row
+    echo "\n\nINSTRUCTIONS:\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "1. Do not change the column headers\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "2. Status can be 'Submitted' or 'Pending'\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "3. Keep the same format for data\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    echo "\n";
+    echo "4. Save as .xls or .xlsx format\t\t\t\t\t";
+    foreach ($months as $month) {
+        echo "\t";
+    }
+    
+    exit;
+}
+
 // Export to Excel
 if (isset($_GET['export_excel'])) {
     header('Content-Type: application/vnd.ms-excel');
@@ -246,6 +318,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
         $action_message = "Please select a file to upload";
         $action_type = "warning";
     }
+}
+
+// Handle voucher verification
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
+    $voucher_id = $_POST['voucher_id'];
+    $action = $_POST['action'];
+    $admin_notes = $_POST['admin_notes'];
+    
+    $voucher_sql = "SELECT * FROM fee_vouchers WHERE id = ?";
+    $voucher_stmt = $conn->prepare($voucher_sql);
+    $voucher_stmt->bind_param("i", $voucher_id);
+    $voucher_stmt->execute();
+    $voucher_result = $voucher_stmt->get_result();
+    $voucher = $voucher_result->fetch_assoc();
+    
+    if ($action === 'approve') {
+        // Update fee payments status
+        $months = explode(',', $voucher['months_applied']);
+        foreach ($months as $month) {
+            $month_sql = "SELECT id FROM months WHERE month_name = ?";
+            $month_stmt = $conn->prepare($month_sql);
+            $month_stmt->bind_param("s", $month);
+            $month_stmt->execute();
+            $month_result = $month_stmt->get_result();
+            $month_data = $month_result->fetch_assoc();
+            
+            if ($month_data) {
+                // Check if fee payment exists
+                $check_fee_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
+                $check_fee_stmt = $conn->prepare($check_fee_sql);
+                $check_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
+                $check_fee_stmt->execute();
+                $check_fee_result = $check_fee_stmt->get_result();
+                
+                if ($check_fee_result->num_rows > 0) {
+                    // Update existing
+                    $update_fee_sql = "UPDATE fee_payments SET status = 'Submitted' WHERE student_id = ? AND month_id = ?";
+                    $update_fee_stmt = $conn->prepare($update_fee_sql);
+                    $update_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
+                    $update_fee_stmt->execute();
+                    $update_fee_stmt->close();
+                } else {
+                    // Insert new
+                    $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted')";
+                    $insert_fee_stmt = $conn->prepare($insert_fee_sql);
+                    $insert_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
+                    $insert_fee_stmt->execute();
+                    $insert_fee_stmt->close();
+                }
+                $check_fee_stmt->close();
+            }
+            $month_stmt->close();
+        }
+        
+        $status = 'approved';
+        $action_message = "Voucher approved successfully! Fee status updated.";
+    } else {
+        $status = 'rejected';
+        $action_message = "Voucher rejected.";
+    }
+    
+    // Update voucher status
+    $update_sql = "UPDATE fee_vouchers SET status = ?, admin_notes = ?, processed_date = NOW() WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("ssi", $status, $admin_notes, $voucher_id);
+    $update_stmt->execute();
+    $update_stmt->close();
+    
+    // Log admin action
+    $student_sql = "SELECT name FROM students WHERE id = ?";
+    $student_stmt = $conn->prepare($student_sql);
+    $student_stmt->bind_param("i", $voucher['student_id']);
+    $student_stmt->execute();
+    $student_result = $student_stmt->get_result();
+    $student_data = $student_result->fetch_assoc();
+    
+    $log_sql = "INSERT INTO admin_logs (admin_username, action, target_student, ip_address) VALUES (?, ?, ?, ?)";
+    $log_stmt = $conn->prepare($log_sql);
+    $log_action = "Voucher $status for " . $student_data['name'] . " (Months: " . $voucher['months_applied'] . ")";
+    $log_stmt->bind_param("ssss", $_SESSION['admin_username'], $log_action, $student_data['name'], $_SERVER['REMOTE_ADDR']);
+    $log_stmt->execute();
+    $log_stmt->close();
+    
+    $action_message = $action_message;
+    $action_type = "success";
 }
 
 // Add new student with fee management
@@ -450,6 +607,11 @@ $seats_result = $conn->query($seats_sql);
 // Fetch all available seats for replacement
 $available_seats_sql = "SELECT * FROM seats WHERE is_booked = FALSE ORDER BY seat_number";
 $available_seats_result = $conn->query($available_seats_sql);
+
+// Fetch pending vouchers count
+$pending_count_sql = "SELECT COUNT(*) as count FROM fee_vouchers WHERE status = 'pending'";
+$pending_count_result = $conn->query($pending_count_sql);
+$pending_count = $pending_count_result->fetch_assoc()['count'];
 ?>
 
 <!DOCTYPE html>
@@ -501,6 +663,10 @@ $available_seats_result = $conn->query($available_seats_sql);
             padding: 20px;
             margin-bottom: 20px;
         }
+        .voucher-badge {
+            font-size: 0.7em;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -529,8 +695,8 @@ $available_seats_result = $conn->query($available_seats_sql);
         <!-- Export/Import Section -->
         <div class="export-import-section">
             <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header bg-success text-white">
                             <h6 class="card-title mb-0"><i class="fas fa-download"></i> Export Data</h6>
                         </div>
@@ -542,13 +708,26 @@ $available_seats_result = $conn->query($available_seats_sql);
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-warning text-dark">
+                            <h6 class="card-title mb-0"><i class="fas fa-file-download"></i> Download Template</h6>
+                        </div>
+                        <div class="card-body">
+                            <p>Download sample Excel template with proper format for importing.</p>
+                            <a href="?download_sample" class="btn btn-warning">
+                                <i class="fas fa-download"></i> Download Sample
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header bg-primary text-white">
                             <h6 class="card-title mb-0"><i class="fas fa-upload"></i> Import Data</h6>
                         </div>
                         <div class="card-body">
-                            <p>Import student data from Excel file. Format: Sno, Name, University ID, Semester, Category, [Months...]</p>
+                            <p>Import student data from Excel file using the template format.</p>
                             <form method="POST" enctype="multipart/form-data">
                                 <div class="input-group">
                                     <input type="file" class="form-control" name="excel_file" accept=".xls,.xlsx" required>
@@ -561,6 +740,20 @@ $available_seats_result = $conn->query($available_seats_sql);
                     </div>
                 </div>
             </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> Import Instructions:</h6>
+                        <ul class="mb-0">
+                            <li>Download the sample template first to understand the format</li>
+                            <li>First 5 columns must be: Sno, Name, University ID, Semester, Category</li>
+                            <li>Subsequent columns should be month names</li>
+                            <li>Status values should be either 'Submitted' or 'Pending'</li>
+                            <li>Keep the same column headers as in the template</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Navigation Tabs -->
@@ -568,6 +761,14 @@ $available_seats_result = $conn->query($available_seats_sql);
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="students-tab" data-bs-toggle="tab" data-bs-target="#students" type="button" role="tab">
                     <i class="fas fa-users"></i> Students & Fees
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="vouchers-tab" data-bs-toggle="tab" data-bs-target="#vouchers" type="button" role="tab">
+                    <i class="fas fa-receipt"></i> Fee Vouchers
+                    <?php if ($pending_count > 0): ?>
+                        <span class="badge bg-danger voucher-badge"><?php echo $pending_count; ?></span>
+                    <?php endif; ?>
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -671,6 +872,136 @@ $available_seats_result = $conn->query($available_seats_sql);
                                                 </a>
                                             </div>
                                         </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fee Vouchers Tab -->
+            <div class="tab-pane fade" id="vouchers" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="fas fa-receipt"></i> Fee Voucher Verification</h5>
+                    </div>
+                    <div class="card-body">
+                        <?php
+                        // Fetch pending vouchers
+                        $pending_vouchers_sql = "SELECT fv.*, s.name, s.university_id 
+                                               FROM fee_vouchers fv 
+                                               JOIN students s ON fv.student_id = s.id 
+                                               WHERE fv.status = 'pending' 
+                                               ORDER BY fv.submission_date ASC";
+                        $pending_vouchers_result = $conn->query($pending_vouchers_sql);
+                        ?>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>University ID</th>
+                                        <th>Months</th>
+                                        <th>Submission Date</th>
+                                        <th>Device Info</th>
+                                        <th>Voucher Image</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php while ($voucher = $pending_vouchers_result->fetch_assoc()): 
+                                        $device_info = json_decode($voucher['device_info'], true);
+                                        $location_data = json_decode($voucher['location_data'], true);
+                                    ?>
+                                    <tr>
+                                        <td><?php echo $voucher['name']; ?></td>
+                                        <td><?php echo $voucher['university_id']; ?></td>
+                                        <td>
+                                            <?php 
+                                            $months = explode(',', $voucher['months_applied']);
+                                            foreach ($months as $month) {
+                                                echo "<span class='badge bg-primary me-1'>$month</span>";
+                                            }
+                                            ?>
+                                        </td>
+                                        <td><?php echo $voucher['submission_date']; ?></td>
+                                        <td>
+                                            <small>
+                                                <strong>MAC:</strong> <?php echo $voucher['mac_address']; ?><br>
+                                                <strong>IP:</strong> <?php echo $voucher['ip_address']; ?><br>
+                                                <strong>Browser:</strong> <?php echo $device_info['browser'] ?? 'Unknown'; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <a href="uploads/<?php echo $voucher['voucher_image']; ?>" target="_blank" class="btn btn-sm btn-info">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <form method="POST" class="row g-2">
+                                                <input type="hidden" name="voucher_id" value="<?php echo $voucher['id']; ?>">
+                                                <div class="col-12">
+                                                    <textarea name="admin_notes" class="form-control form-control-sm" 
+                                                              placeholder="Admin notes (optional)" rows="2"></textarea>
+                                                </div>
+                                                <div class="col-6">
+                                                    <button type="submit" name="verify_voucher" value="approve" 
+                                                            class="btn btn-success btn-sm w-100">
+                                                        <i class="fas fa-check"></i> Approve
+                                                    </button>
+                                                </div>
+                                                <div class="col-6">
+                                                    <button type="submit" name="verify_voucher" value="reject" 
+                                                            class="btn btn-danger btn-sm w-100">
+                                                        <i class="fas fa-times"></i> Reject
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Voucher History -->
+                        <h5 class="mt-4">Voucher History</h5>
+                        <?php
+                        $history_vouchers_sql = "SELECT fv.*, s.name, s.university_id 
+                                               FROM fee_vouchers fv 
+                                               JOIN students s ON fv.student_id = s.id 
+                                               WHERE fv.status != 'pending' 
+                                               ORDER BY fv.processed_date DESC 
+                                               LIMIT 50";
+                        $history_vouchers_result = $conn->query($history_vouchers_sql);
+                        ?>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Months</th>
+                                        <th>Status</th>
+                                        <th>Processed Date</th>
+                                        <th>Admin Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php while ($voucher = $history_vouchers_result->fetch_assoc()): ?>
+                                    <tr>
+                                        <td><?php echo $voucher['name']; ?></td>
+                                        <td><?php echo $voucher['months_applied']; ?></td>
+                                        <td>
+                                            <span class="badge <?php echo $voucher['status'] == 'approved' ? 'bg-success' : 'bg-danger'; ?>">
+                                                <?php echo ucfirst($voucher['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo $voucher['processed_date']; ?></td>
+                                        <td><small><?php echo $voucher['admin_notes'] ?: 'N/A'; ?></small></td>
                                     </tr>
                                     <?php endwhile; ?>
                                 </tbody>
