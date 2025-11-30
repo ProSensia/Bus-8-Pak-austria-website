@@ -80,64 +80,133 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
             $message = "Please select at least one month!";
             $message_type = "warning";
         } elseif ($voucher_image['error'] !== UPLOAD_ERR_OK) {
-            $message = "Please upload a valid voucher image!";
+            // More detailed error messages
+            $upload_errors = [
+                UPLOAD_ERR_INI_SIZE => 'File is too large (server limit)',
+                UPLOAD_ERR_FORM_SIZE => 'File is too large (form limit)',
+                UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                UPLOAD_ERR_NO_FILE => 'No file was selected',
+                UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                UPLOAD_ERR_EXTENSION => 'File upload stopped by extension'
+            ];
+            $error_msg = $upload_errors[$voucher_image['error']] ?? 'Unknown upload error';
+            $message = "Upload error: " . $error_msg;
             $message_type = "warning";
         } else {
-            // Validate file type
-            $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-            $file_type = mime_content_type($voucher_image['tmp_name']);
+            // Validate file type using multiple methods
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif'];
+            $file_extension = strtolower(pathinfo($voucher_image['name'], PATHINFO_EXTENSION));
 
-            if (!in_array($file_type, $allowed_types)) {
-                $message = "Only JPG, PNG, and GIF images are allowed!";
+            // Check file size (max 5MB)
+            $max_file_size = 5 * 1024 * 1024; // 5MB in bytes
+            if ($voucher_image['size'] > $max_file_size) {
+                $message = "File is too large. Maximum size allowed is 5MB.";
+                $message_type = "warning";
+            } elseif (!in_array($file_extension, $allowed_extensions)) {
+                $message = "Only JPG, JPEG, PNG, and GIF images are allowed!";
                 $message_type = "warning";
             } else {
-                // Get device information
-                $mac_address = getMacAddress();
-                $ip_address = $_SERVER['REMOTE_ADDR'];
-                $device_info = json_encode([
-                    'user_agent' => $_SERVER['HTTP_USER_AGENT'],
-                    'browser' => get_browser(null, true)['browser'] ?? 'Unknown',
-                    'platform' => get_browser(null, true)['platform'] ?? 'Unknown'
-                ]);
+                // Additional MIME type validation
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                $mime_type = finfo_file($finfo, $voucher_image['tmp_name']);
+                finfo_close($finfo);
 
-                // Get location data (simplified - in production use geolocation API)
-                $location_data = json_encode([
-                    'ip' => $ip_address,
-                    'city' => 'Unknown',
-                    'country' => 'Unknown'
-                ]);
+                $allowed_mime_types = [
+                    'image/jpeg',
+                    'image/jpg',
+                    'image/png',
+                    'image/gif'
+                ];
 
-                // Generate unique filename
-                $file_extension = pathinfo($voucher_image['name'], PATHINFO_EXTENSION);
-                $filename = 'voucher_' . $student_info['university_id'] . '_' . time() . '.' . $file_extension;
-                $upload_path = 'uploads/' . $filename;
-
-                // Move uploaded file
-                if (move_uploaded_file($voucher_image['tmp_name'], $upload_path)) {
-                    // Insert voucher record
-                    $sql = "INSERT INTO fee_vouchers (student_id, months_applied, voucher_image, mac_address, ip_address, location_data, device_info) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("issssss", $student_info['id'], $months_applied, $filename, $mac_address, $ip_address, $location_data, $device_info);
-
-                    if ($stmt->execute()) {
-                        $message = "Fee voucher submitted successfully! It will be verified within 24 hours.";
-                        $message_type = "success";
-
-                        // Update session to reflect pending status
-                        foreach (explode(',', $months_applied) as $month) {
-                            $fee_status[$month] = 'Pending Verification';
-                        }
-                    } else {
-                        $message = "Error submitting voucher: " . $conn->error;
-                        $message_type = "danger";
-                        // Delete uploaded file if DB insert failed
-                        unlink($upload_path);
-                    }
-                    $stmt->close();
+                if (!in_array($mime_type, $allowed_mime_types)) {
+                    $message = "Invalid file type. Please upload a valid image file.";
+                    $message_type = "warning";
                 } else {
-                    $message = "Error uploading image!";
-                    $message_type = "danger";
+                    // Get device information
+                    $mac_address = getMacAddress();
+                    $ip_address = $_SERVER['REMOTE_ADDR'];
+                    $device_info = json_encode([
+                        'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+                        'browser' => $_SERVER['HTTP_USER_AGENT'], // Simplified
+                        'platform' => php_uname('s')
+                    ]);
+
+                    // Get location data
+                    $location_data = json_encode([
+                        'ip' => $ip_address,
+                        'city' => 'Unknown',
+                        'country' => 'Unknown'
+                    ]);
+
+                    // Create uploads directory if it doesn't exist
+                    $upload_dir = 'uploads/';
+                    if (!is_dir($upload_dir)) {
+                        if (!mkdir($upload_dir, 0755, true)) {
+                            $message = "Could not create upload directory!";
+                            $message_type = "danger";
+                        }
+                    }
+
+                    // Check if directory is writable
+                    if (!is_writable($upload_dir)) {
+                        $message = "Upload directory is not writable!";
+                        $message_type = "danger";
+                    } else {
+                        // Generate unique filename
+                        $filename = 'voucher_' . $student_info['university_id'] . '_' . time() . '_' . uniqid() . '.' . $file_extension;
+                        $upload_path = $upload_dir . $filename;
+
+                        // Move uploaded file with error handling
+                        if (move_uploaded_file($voucher_image['tmp_name'], $upload_path)) {
+                            // Verify file was actually moved
+                            if (file_exists($upload_path)) {
+                                // Insert voucher record
+                                $sql = "INSERT INTO fee_vouchers (student_id, months_applied, voucher_image, mac_address, ip_address, location_data, device_info) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?)";
+                                $stmt = $conn->prepare($sql);
+
+                                if ($stmt) {
+                                    $stmt->bind_param("issssss", $student_info['id'], $months_applied, $filename, $mac_address, $ip_address, $location_data, $device_info);
+
+                                    if ($stmt->execute()) {
+                                        $message = "Fee voucher submitted successfully! It will be verified within 24 hours.";
+                                        $message_type = "success";
+
+                                        // Update session to reflect pending status
+                                        foreach (explode(',', $months_applied) as $month) {
+                                            $fee_status[$month] = 'Pending Verification';
+                                        }
+                                    } else {
+                                        $message = "Error saving voucher record: " . $conn->error;
+                                        $message_type = "danger";
+                                        // Delete uploaded file if DB insert failed
+                                        if (file_exists($upload_path)) {
+                                            unlink($upload_path);
+                                        }
+                                    }
+                                    $stmt->close();
+                                } else {
+                                    $message = "Database error: " . $conn->error;
+                                    $message_type = "danger";
+                                    if (file_exists($upload_path)) {
+                                        unlink($upload_path);
+                                    }
+                                }
+                            } else {
+                                $message = "File upload failed - file not found after move!";
+                                $message_type = "danger";
+                            }
+                        } else {
+                            $message = "Error moving uploaded file! Please try again.";
+                            $message_type = "danger";
+
+                            // Debug information
+                            error_log("Upload error: tmp_name: " . $voucher_image['tmp_name'] . ", upload_path: " . $upload_path);
+                            error_log("Is uploaded: " . (is_uploaded_file($voucher_image['tmp_name']) ? 'yes' : 'no'));
+                            error_log("Tmp file exists: " . (file_exists($voucher_image['tmp_name']) ? 'yes' : 'no'));
+                        }
+                    }
                 }
             }
         }
@@ -300,7 +369,7 @@ function getMacAddress()
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css?v=<?php echo filemtime('style.css'); ?>">
-   
+
 </head>
 
 <body>
