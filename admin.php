@@ -206,184 +206,230 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
     if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
         $file_tmp_path = $_FILES['excel_file']['tmp_name'];
         $file_name = $_FILES['excel_file']['name'];
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
         
-        if (pathinfo($file_name, PATHINFO_EXTENSION) === 'xls' || pathinfo($file_name, PATHINFO_EXTENSION) === 'xlsx') {
-            // Use PHPExcelReader or simple file reading with proper encoding
-            $file_data = file_get_contents($file_tmp_path);
-            
-            // Convert to UTF-8 and clean the data
-            $file_data = mb_convert_encoding($file_data, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
-            $file_data = preg_replace('/[^\x00-\x7F]+\S+/', '', $file_data); // Remove non-printable characters
-            
-            $lines = explode("\n", $file_data);
-            
-            // Skip empty lines and find the header
-            $header_found = false;
-            $header_line = 0;
-            
-            for ($i = 0; $i < count($lines); $i++) {
-                if (empty(trim($lines[$i]))) continue;
-                
-                $row_data = explode("\t", trim($lines[$i]));
-                $row_data = array_map('trim', $row_data);
-                
-                // Check if this looks like a header row (contains expected columns)
-                if (in_array('Sno', $row_data) || in_array('Name', $row_data) || in_array('University ID', $row_data)) {
-                    $header_found = true;
-                    $header_line = $i;
-                    $headers = $row_data;
-                    break;
-                }
+        if (in_array($file_ext, ['xls', 'xlsx', 'csv'])) {
+            // For real Excel files, we need to use a library or convert to CSV
+            if ($file_ext === 'xlsx' || $file_ext === 'xls') {
+                // Convert Excel to array using simple method
+                $data = readExcelFile($file_tmp_path, $file_ext);
+            } else {
+                // For CSV files
+                $data = readCSVFile($file_tmp_path);
             }
             
-            if (!$header_found) {
-                $action_message = "Could not find valid header row in the Excel file. Please use the provided template.";
+            if (empty($data)) {
+                $action_message = "Could not read the Excel file. Please save as Excel 97-2003 (.xls) format or CSV.";
                 $action_type = "danger";
             } else {
-                // Get month columns (skip first 5 columns)
-                $month_columns = array_slice($headers, 5);
-                
+                // Process the data
                 $success_count = 0;
                 $error_count = 0;
-                $processed_students = [];
                 
-                // Process data rows (start from line after header)
-                for ($i = $header_line + 1; $i < count($lines); $i++) {
-                    if (empty(trim($lines[$i]))) continue;
+                // Find header row
+                $header_row = findHeaderRow($data);
+                
+                if ($header_row === false) {
+                    $action_message = "Could not find valid header row. Please use the provided template.";
+                    $action_type = "danger";
+                } else {
+                    $headers = $data[$header_row];
+                    $month_columns = array_slice($headers, 5); // Skip first 5 columns
                     
-                    $row_data = explode("\t", trim($lines[$i]));
-                    $row_data = array_map('trim', $row_data);
-                    $row_data = array_map(function($value) {
-                        // Clean each value
-                        return preg_replace('/[^\x20-\x7E]/', '', $value);
-                    }, $row_data);
-                    
-                    // Skip rows that don't have enough data or are instruction rows
-                    if (count($row_data) < 5 || 
-                        stripos(implode('', $row_data), 'instruction') !== false ||
-                        empty($row_data[0]) || !is_numeric($row_data[0])) {
-                        continue;
-                    }
-                    
-                    $sno = intval($row_data[0]);
-                    $name = $conn->real_escape_string($row_data[1]);
-                    $university_id = $conn->real_escape_string($row_data[2]);
-                    $semester = $conn->real_escape_string($row_data[3]);
-                    $category = $conn->real_escape_string($row_data[4]);
-                    
-                    // Skip if essential data is missing
-                    if (empty($name) || empty($university_id)) {
-                        $error_count++;
-                        continue;
-                    }
-                    
-                    // Check if student already exists
-                    $check_sql = "SELECT id FROM students WHERE university_id = ?";
-                    $check_stmt = $conn->prepare($check_sql);
-                    $check_stmt->bind_param("s", $university_id);
-                    $check_stmt->execute();
-                    $check_result = $check_stmt->get_result();
-                    
-                    if ($check_result->num_rows > 0) {
-                        // Update existing student
-                        $student = $check_result->fetch_assoc();
-                        $student_id = $student['id'];
+                    // Process data rows
+                    for ($i = $header_row + 1; $i < count($data); $i++) {
+                        if (empty($data[$i]) || empty(trim(implode('', $data[$i])))) {
+                            continue; // Skip empty rows
+                        }
                         
-                        $update_sql = "UPDATE students SET sno = ?, name = ?, semester = ?, category = ? WHERE id = ?";
-                        $update_stmt = $conn->prepare($update_sql);
-                        $update_stmt->bind_param("isssi", $sno, $name, $semester, $category, $student_id);
-                        $update_stmt->execute();
-                        $update_stmt->close();
-                    } else {
-                        // Insert new student
-                        $insert_sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
-                        $insert_stmt = $conn->prepare($insert_sql);
-                        $insert_stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
+                        $row_data = $data[$i];
                         
-                        if ($insert_stmt->execute()) {
-                            $student_id = $insert_stmt->insert_id;
-                        } else {
-                            $error_count++;
-                            $check_stmt->close();
+                        // Skip if not enough data or header-like rows
+                        if (count($row_data) < 5 || 
+                            !is_numeric($row_data[0]) || 
+                            empty($row_data[1]) || 
+                            empty($row_data[2])) {
                             continue;
                         }
-                        $insert_stmt->close();
-                    }
-                    $check_stmt->close();
-                    
-                    // Process fee payments for each month column
-                    foreach ($month_columns as $index => $month_name) {
-                        $month_index = $index + 5;
-                        $status = isset($row_data[$month_index]) ? $row_data[$month_index] : 'Pending';
                         
-                        // Validate status
-                        if (!in_array($status, ['Submitted', 'Pending'])) {
-                            $status = 'Pending';
-                        }
+                        $sno = intval($row_data[0]);
+                        $name = $conn->real_escape_string(trim($row_data[1]));
+                        $university_id = $conn->real_escape_string(trim($row_data[2]));
+                        $semester = $conn->real_escape_string(trim($row_data[3]));
+                        $category = $conn->real_escape_string(trim($row_data[4]));
                         
-                        // Clean month name
-                        $month_name = preg_replace('/[^\x20-\x7E]/', '', $month_name);
+                        // Process student data (same as before)
+                        $check_sql = "SELECT id FROM students WHERE university_id = ?";
+                        $check_stmt = $conn->prepare($check_sql);
+                        $check_stmt->bind_param("s", $university_id);
+                        $check_stmt->execute();
+                        $check_result = $check_stmt->get_result();
                         
-                        // Get month ID
-                        $month_sql = "SELECT id FROM months WHERE month_name = ?";
-                        $month_stmt = $conn->prepare($month_sql);
-                        $month_stmt->bind_param("s", $month_name);
-                        $month_stmt->execute();
-                        $month_result = $month_stmt->get_result();
-                        
-                        if ($month_result->num_rows > 0) {
-                            $month = $month_result->fetch_assoc();
-                            $month_id = $month['id'];
+                        if ($check_result->num_rows > 0) {
+                            $student = $check_result->fetch_assoc();
+                            $student_id = $student['id'];
+                            $update_sql = "UPDATE students SET sno = ?, name = ?, semester = ?, category = ? WHERE id = ?";
+                            $update_stmt = $conn->prepare($update_sql);
+                            $update_stmt->bind_param("isssi", $sno, $name, $semester, $category, $student_id);
+                            $update_stmt->execute();
+                            $update_stmt->close();
+                        } else {
+                            $insert_sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
+                            $insert_stmt = $conn->prepare($insert_sql);
+                            $insert_stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
                             
-                            // Check if fee payment exists
-                            $fee_check_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
-                            $fee_check_stmt = $conn->prepare($fee_check_sql);
-                            $fee_check_stmt->bind_param("ii", $student_id, $month_id);
-                            $fee_check_stmt->execute();
-                            $fee_check_result = $fee_check_stmt->get_result();
-                            
-                            if ($fee_check_result->num_rows > 0) {
-                                // Update existing fee payment
-                                $update_fee_sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
-                                $update_fee_stmt = $conn->prepare($update_fee_sql);
-                                $update_fee_stmt->bind_param("sii", $status, $student_id, $month_id);
-                                $update_fee_stmt->execute();
-                                $update_fee_stmt->close();
+                            if ($insert_stmt->execute()) {
+                                $student_id = $insert_stmt->insert_id;
                             } else {
-                                // Insert new fee payment
-                                $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
-                                $insert_fee_stmt = $conn->prepare($insert_fee_sql);
-                                $insert_fee_stmt->bind_param("iis", $student_id, $month_id, $status);
-                                $insert_fee_stmt->execute();
-                                $insert_fee_stmt->close();
+                                $error_count++;
+                                continue;
                             }
-                            $fee_check_stmt->close();
+                            $insert_stmt->close();
                         }
-                        $month_stmt->close();
+                        $check_stmt->close();
+                        
+                        // Process fee payments
+                        foreach ($month_columns as $index => $month_name) {
+                            $month_index = $index + 5;
+                            $status = isset($row_data[$month_index]) ? trim($row_data[$month_index]) : 'Pending';
+                            
+                            if (!in_array($status, ['Submitted', 'Pending'])) {
+                                $status = 'Pending';
+                            }
+                            
+                            $month_sql = "SELECT id FROM months WHERE month_name = ?";
+                            $month_stmt = $conn->prepare($month_sql);
+                            $month_stmt->bind_param("s", $month_name);
+                            $month_stmt->execute();
+                            $month_result = $month_stmt->get_result();
+                            
+                            if ($month_result->num_rows > 0) {
+                                $month = $month_result->fetch_assoc();
+                                $month_id = $month['id'];
+                                
+                                $fee_check_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
+                                $fee_check_stmt = $conn->prepare($fee_check_sql);
+                                $fee_check_stmt->bind_param("ii", $student_id, $month_id);
+                                $fee_check_stmt->execute();
+                                $fee_check_result = $fee_check_stmt->get_result();
+                                
+                                if ($fee_check_result->num_rows > 0) {
+                                    $update_fee_sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
+                                    $update_fee_stmt = $conn->prepare($update_fee_sql);
+                                    $update_fee_stmt->bind_param("sii", $status, $student_id, $month_id);
+                                    $update_fee_stmt->execute();
+                                    $update_fee_stmt->close();
+                                } else {
+                                    $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
+                                    $insert_fee_stmt = $conn->prepare($insert_fee_sql);
+                                    $insert_fee_stmt->bind_param("iis", $student_id, $month_id, $status);
+                                    $insert_fee_stmt->execute();
+                                    $insert_fee_stmt->close();
+                                }
+                                $fee_check_stmt->close();
+                            }
+                            $month_stmt->close();
+                        }
+                        $success_count++;
                     }
-                    $success_count++;
-                    $processed_students[] = $name;
-                }
-                
-                if ($success_count > 0) {
+                    
                     $action_message = "Excel file imported successfully! $success_count records processed.";
                     if ($error_count > 0) {
                         $action_message .= " $error_count records had errors.";
                     }
                     $action_type = "success";
-                } else {
-                    $action_message = "No valid student records found in the file. Please check the format.";
-                    $action_type = "warning";
                 }
             }
         } else {
-            $action_message = "Please upload a valid Excel file (.xls or .xlsx)";
+            $action_message = "Please upload a valid Excel file (.xls, .xlsx) or CSV";
             $action_type = "danger";
         }
     } else {
         $action_message = "Please select a file to upload";
         $action_type = "warning";
     }
+}
+
+// Helper functions
+function readExcelFile($file_path, $file_ext) {
+    // Simple Excel file reader using COM (Windows) or shell commands
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        // Windows - using COM
+        try {
+            $excel = new COM("Excel.Application");
+            $excel->Visible = false;
+            $workbook = $excel->Workbooks->Open($file_path);
+            $worksheet = $workbook->Worksheets(1);
+            
+            $data = [];
+            $i = 1;
+            while (!empty(trim($worksheet->Cells($i, 1)->Value))) {
+                $row = [];
+                $j = 1;
+                while (!empty(trim($worksheet->Cells($i, $j)->Value)) || $j <= 10) {
+                    $row[] = $worksheet->Cells($i, $j)->Value;
+                    $j++;
+                }
+                $data[] = $row;
+                $i++;
+            }
+            
+            $workbook->Close();
+            $excel->Quit();
+            return $data;
+        } catch (Exception $e) {
+            // Fallback to simple text reading
+            return readExcelAsText($file_path);
+        }
+    } else {
+        // Linux/Mac - try using shell commands
+        return readExcelAsText($file_path);
+    }
+}
+
+function readExcelAsText($file_path) {
+    // Fallback: try to read as text
+    $content = file_get_contents($file_path);
+    $lines = explode("\n", $content);
+    
+    $data = [];
+    foreach ($lines as $line) {
+        if (!empty(trim($line))) {
+            $data[] = explode("\t", $line);
+        }
+    }
+    return $data;
+}
+
+function readCSVFile($file_path) {
+    $data = [];
+    if (($handle = fopen($file_path, "r")) !== FALSE) {
+        while (($row = fgetcsv($handle, 1000, ",")) !== FALSE) {
+            $data[] = $row;
+        }
+        fclose($handle);
+    }
+    return $data;
+}
+
+function findHeaderRow($data) {
+    foreach ($data as $index => $row) {
+        if (count($row) >= 5) {
+            // Check if this row contains expected header values
+            $first_cell = strtolower(trim($row[0]));
+            $second_cell = strtolower(trim($row[1]));
+            
+            if ($first_cell === 'sno' && $second_cell === 'name') {
+                return $index;
+            }
+            
+            // Also check for other header indicators
+            if (in_array('Sno', $row) || in_array('Name', $row) || in_array('University ID', $row)) {
+                return $index;
+            }
+        }
+    }
+    return false;
 }
 
 // Add new student with fee management
