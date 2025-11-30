@@ -2,6 +2,7 @@
 include 'connection.php';
 session_start();
 
+// Remove the problematic MySQL system variables that cause errors
 // Simple authentication
 $admin_username = "momin";
 $admin_password = "mominkhan@123";
@@ -320,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
     }
 }
 
-// Handle voucher verification
+// Handle voucher verification - FIXED VERSION
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
     $voucher_id = $_POST['voucher_id'];
     $action = $_POST['action'];
@@ -334,40 +335,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
     $voucher = $voucher_result->fetch_assoc();
     
     if ($action === 'approve') {
-        // Update fee payments status
+        // Update fee payments status - SIMPLIFIED VERSION
         $months = explode(',', $voucher['months_applied']);
-        foreach ($months as $month) {
+        foreach ($months as $month_name) {
+            // Get month ID
             $month_sql = "SELECT id FROM months WHERE month_name = ?";
             $month_stmt = $conn->prepare($month_sql);
-            $month_stmt->bind_param("s", $month);
+            $month_stmt->bind_param("s", $month_name);
             $month_stmt->execute();
             $month_result = $month_stmt->get_result();
-            $month_data = $month_result->fetch_assoc();
             
-            if ($month_data) {
-                // Check if fee payment exists
-                $check_fee_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
-                $check_fee_stmt = $conn->prepare($check_fee_sql);
-                $check_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                $check_fee_stmt->execute();
-                $check_fee_result = $check_fee_stmt->get_result();
+            if ($month_result->num_rows > 0) {
+                $month_data = $month_result->fetch_assoc();
+                $month_id = $month_data['id'];
                 
-                if ($check_fee_result->num_rows > 0) {
-                    // Update existing
-                    $update_fee_sql = "UPDATE fee_payments SET status = 'Submitted' WHERE student_id = ? AND month_id = ?";
-                    $update_fee_stmt = $conn->prepare($update_fee_sql);
-                    $update_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                    $update_fee_stmt->execute();
-                    $update_fee_stmt->close();
-                } else {
-                    // Insert new
-                    $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted')";
-                    $insert_fee_stmt = $conn->prepare($insert_fee_sql);
-                    $insert_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                    $insert_fee_stmt->execute();
-                    $insert_fee_stmt->close();
-                }
-                $check_fee_stmt->close();
+                // Use INSERT ... ON DUPLICATE KEY UPDATE for simplicity
+                $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted') 
+                           ON DUPLICATE KEY UPDATE status = 'Submitted'";
+                $fee_stmt = $conn->prepare($fee_sql);
+                $fee_stmt->bind_param("ii", $voucher['student_id'], $month_id);
+                $fee_stmt->execute();
+                $fee_stmt->close();
             }
             $month_stmt->close();
         }
@@ -692,6 +680,7 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
             </div>
         <?php endif; ?>
 
+        <!-- Rest of your HTML code remains exactly the same -->
         <!-- Export/Import Section -->
         <div class="export-import-section">
             <div class="row">
