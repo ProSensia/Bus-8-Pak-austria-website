@@ -7,6 +7,7 @@ $message_type = '';
 $student_info = null;
 $selected_seat = null;
 $fee_status = [];
+$pending_months = [];
 
 // Handle university ID verification
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'])) {
@@ -28,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
 
         if ($result->num_rows > 0) {
             $student_info = $result->fetch_assoc();
+            $_SESSION['verified_student'] = $student_info;
 
             // Parse fee data
             $fee_data = $student_info['fee_data'];
@@ -40,35 +42,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
                 }
             }
 
-            // Check if student has paid fees for current period
-            $current_month = date('F');
-            $has_paid_fees = false;
-            $paid_until = '';
-
-            // Check fee status for current and future months
+            // Find pending months for voucher submission
             $months_order = ['September', 'October', 'November', 'December'];
-            $current_month_index = array_search($current_month, $months_order);
-
-            if ($current_month_index !== false) {
-                for ($i = $current_month_index; $i < count($months_order); $i++) {
-                    $month = $months_order[$i];
-                    if (isset($fee_payments[$month]) && $fee_payments[$month] === 'Submitted') {
-                        $has_paid_fees = true;
-                        $paid_until = $month;
-                        break;
-                    }
+            foreach ($months_order as $month) {
+                if (!isset($fee_payments[$month]) || $fee_payments[$month] === 'Pending') {
+                    $pending_months[] = $month;
                 }
             }
 
-            if ($has_paid_fees) {
-                $message = "Student verified! Fee paid until " . $paid_until . " 2024";
-                $message_type = "success";
-                $fee_status = $fee_payments;
-            } else {
-                $message = "Student verified but no active fee payment found for current period.";
-                $message_type = "warning";
-                $fee_status = $fee_payments;
-            }
+            $fee_status = $fee_payments;
+            $message = "Student verified successfully!";
+            $message_type = "success";
+            
         } else {
             $message = "University ID not found!";
             $message_type = "danger";
@@ -77,6 +62,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_university_id'
     } else {
         $message = "Please enter a University ID";
         $message_type = "warning";
+    }
+}
+
+// Handle fee voucher submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_voucher'])) {
+    if (!isset($_SESSION['verified_student'])) {
+        $message = "Please verify your University ID first!";
+        $message_type = "warning";
+    } else {
+        $student_info = $_SESSION['verified_student'];
+        $months_applied = implode(',', $_POST['months'] ?? []);
+        $voucher_image = $_FILES['voucher_image'];
+        
+        // Validate input
+        if (empty($months_applied)) {
+            $message = "Please select at least one month!";
+            $message_type = "warning";
+        } elseif ($voucher_image['error'] !== UPLOAD_ERR_OK) {
+            $message = "Please upload a valid voucher image!";
+            $message_type = "warning";
+        } else {
+            // Validate file type
+            $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+            $file_type = mime_content_type($voucher_image['tmp_name']);
+            
+            if (!in_array($file_type, $allowed_types)) {
+                $message = "Only JPG, PNG, and GIF images are allowed!";
+                $message_type = "warning";
+            } else {
+                // Get device information
+                $mac_address = getMacAddress();
+                $ip_address = $_SERVER['REMOTE_ADDR'];
+                $device_info = json_encode([
+                    'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+                    'browser' => get_browser(null, true)['browser'] ?? 'Unknown',
+                    'platform' => get_browser(null, true)['platform'] ?? 'Unknown'
+                ]);
+                
+                // Get location data (simplified - in production use geolocation API)
+                $location_data = json_encode([
+                    'ip' => $ip_address,
+                    'city' => 'Unknown',
+                    'country' => 'Unknown'
+                ]);
+
+                // Generate unique filename
+                $file_extension = pathinfo($voucher_image['name'], PATHINFO_EXTENSION);
+                $filename = 'voucher_' . $student_info['university_id'] . '_' . time() . '.' . $file_extension;
+                $upload_path = 'uploads/' . $filename;
+
+                // Move uploaded file
+                if (move_uploaded_file($voucher_image['tmp_name'], $upload_path)) {
+                    // Insert voucher record
+                    $sql = "INSERT INTO fee_vouchers (student_id, months_applied, voucher_image, mac_address, ip_address, location_data, device_info) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("issssss", $student_info['id'], $months_applied, $filename, $mac_address, $ip_address, $location_data, $device_info);
+                    
+                    if ($stmt->execute()) {
+                        $message = "Fee voucher submitted successfully! It will be verified within 24 hours.";
+                        $message_type = "success";
+                        
+                        // Update session to reflect pending status
+                        foreach (explode(',', $months_applied) as $month) {
+                            $fee_status[$month] = 'Pending Verification';
+                        }
+                    } else {
+                        $message = "Error submitting voucher: " . $conn->error;
+                        $message_type = "danger";
+                        // Delete uploaded file if DB insert failed
+                        unlink($upload_path);
+                    }
+                    $stmt->close();
+                } else {
+                    $message = "Error uploading image!";
+                    $message_type = "danger";
+                }
+            }
+        }
     }
 }
 
@@ -108,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
         $check_stmt->close();
 
         if ($seat_data && !$seat_data['is_booked']) {
-            // 3️⃣ Check user category & fee (same as your current logic)
+            // 3️⃣ Check user category & fee
             $user_sql = "SELECT s.*, 
                      GROUP_CONCAT(CONCAT(m.month_name, ':', fp.status)) as fee_data
                      FROM students s 
@@ -123,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
 
             if ($user_result->num_rows > 0) {
                 $user_data = $user_result->fetch_assoc();
-                $category = strtolower($user_data['category']); // student or faculty
+                $category = strtolower($user_data['category']);
                 $can_book = false;
 
                 if ($category === 'faculty') {
@@ -185,7 +249,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_seat'])) {
     $seat_check_stmt->close();
 }
 
-
 // Fetch all seats
 $sql = "SELECT * FROM seats ORDER BY 
         CAST(SUBSTRING(seat_number, 1, 1) AS UNSIGNED),
@@ -197,20 +260,188 @@ if ($result->num_rows > 0) {
         $seats[] = $row;
     }
 }
+
+// Function to get MAC address
+function getMacAddress() {
+    $mac = 'Unknown';
+    
+    // For Windows
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        @exec('ipconfig /all', $output);
+        foreach ($output as $line) {
+            if (preg_match('/Physical Address[^:]*: ([0-9A-F-]+)/i', $line, $matches)) {
+                $mac = $matches[1];
+                break;
+            }
+        }
+    } 
+    // For Linux/Unix
+    else {
+        @exec('/sbin/ifconfig -a', $output);
+        foreach ($output as $line) {
+            if (preg_match('/ether (([0-9a-f]{2}[:]){5}([0-9a-f]{2}))/i', $line, $matches)) {
+                $mac = $matches[1];
+                break;
+            }
+        }
+    }
+    
+    return $mac;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coaster Bus Seat Booking</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=<?php echo filemtime('style.css'); ?>">
-
+    <style>
+        .bus-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .bus-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .grid-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .row-label {
+            width: 30px;
+            text-align: center;
+            font-weight: bold;
+            color: #666;
+        }
+        .seat {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            font-weight: bold;
+        }
+        .seat.available {
+            background-color: #c0c0c0;
+            border-color: #999;
+        }
+        .seat.booked {
+            background-color: #6c757d;
+            color: white;
+            cursor: not-allowed;
+        }
+        .seat.booked.male {
+            background-color: #4d79ff;
+        }
+        .seat.booked.female {
+            background-color: #ff66b2;
+        }
+        .seat.selected {
+            border-color: #28a745;
+            box-shadow: 0 0 10px #28a745;
+        }
+        .seat:hover:not(.booked) {
+            transform: scale(1.05);
+            border-color: #007bff;
+        }
+        .passenger-name {
+            font-size: 10px;
+            margin-top: 5px;
+            text-align: center;
+        }
+        .driver-area, .door-area {
+            width: 100px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #ff6b6b;
+            color: white;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .walking-area {
+            flex: 1;
+            height: 10px;
+            background-color: #f8f9fa;
+            border: 1px dashed #dee2e6;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .fee-status {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .fee-month {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .fee-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-submitted { background-color: #28a745; color: white; }
+        .badge-pending { background-color: #ffc107; color: black; }
+        .badge-verification { background-color: #17a2b8; color: white; }
+        
+        .voucher-section {
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+        }
+        .month-checkbox {
+            border: 2px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .month-checkbox.selected {
+            border-color: #007bff;
+            background-color: #e7f3ff;
+        }
+        .month-checkbox:hover {
+            border-color: #0056b3;
+        }
+    </style>
 </head>
-
 <body>
     <div class="container mt-4">
         <div class="bus-container">
@@ -256,7 +487,10 @@ if ($result->num_rows > 0) {
                                 $months = ['September', 'October', 'November', 'December'];
                                 foreach ($months as $month) {
                                     $status = isset($fee_status[$month]) ? $fee_status[$month] : 'Pending';
-                                    $badge_class = $status === 'Submitted' ? 'badge-submitted' : 'badge-pending';
+                                    $badge_class = 'badge-pending';
+                                    if ($status === 'Submitted') $badge_class = 'badge-submitted';
+                                    if ($status === 'Pending Verification') $badge_class = 'badge-verification';
+                                    
                                     echo "
                                     <div class='fee-month'>
                                         <div>$month</div>
@@ -270,8 +504,64 @@ if ($result->num_rows > 0) {
                 </div>
             </div>
 
+            <!-- Fee Voucher Submission Section -->
+            <?php if ($student_info && !empty($pending_months)): ?>
+            <div class="card mb-4 voucher-section">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0"><i class="fas fa-receipt"></i> Submit Fee Voucher</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Select Months to Pay:</label>
+                                <div class="months-selection">
+                                    <?php foreach ($pending_months as $month): ?>
+                                    <div class="form-check month-checkbox">
+                                        <input class="form-check-input" type="checkbox" name="months[]" 
+                                               value="<?php echo $month; ?>" id="month_<?php echo $month; ?>">
+                                        <label class="form-check-label w-100" for="month_<?php echo $month; ?>">
+                                            <strong><?php echo $month; ?> 2024</strong>
+                                            <span class="badge bg-warning float-end">Pending</span>
+                                        </label>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label for="voucher_image" class="form-label">Upload Fee Voucher Image</label>
+                                <input type="file" class="form-control" id="voucher_image" name="voucher_image" 
+                                       accept="image/jpeg,image/jpg,image/png,image/gif" required>
+                                <div class="form-text">
+                                    Upload clear image of your fee payment receipt/voucher (JPG, PNG, GIF)
+                                </div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    <h6><i class="fas fa-info-circle"></i> Important Notes:</h6>
+                                    <ul class="mb-0">
+                                        <li>Your voucher will be verified within 24 hours</li>
+                                        <li>Once approved, fee status will be updated to "Submitted"</li>
+                                        <li>You can book seats only for months with "Submitted" status</li>
+                                        <li>System tracks your device information for security</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <button type="submit" name="submit_voucher" class="btn btn-success">
+                                    <i class="fas fa-upload"></i> Submit Voucher for Verification
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <?php endif; ?>
 
-
+            <!-- Bus Layout -->
             <div class="bus-grid">
                 <?php
                 $current_row = '';
@@ -290,7 +580,7 @@ if ($result->num_rows > 0) {
 
                     // Row 1: Special layout with driver
                     if ($row_num == '1') {
-                        // Left seats (1A, 1B) - span 1.5 columns each
+                        // Left seats (1A, 1B)
                         foreach (array_slice($row_seats, 0, 2) as $seat) {
                             $seat_class = 'available';
                             if ($seat['is_booked']) {
@@ -309,7 +599,6 @@ if ($result->num_rows > 0) {
                                 if ($seat['passenger_name']) {
                                     $first_name = explode(' ', $seat['passenger_name'])[0];
                                     echo '<div class="passenger-name">' . htmlspecialchars($first_name) . '</div>';
-
                                 }
                             }
                             echo '</div>';
@@ -350,7 +639,7 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
                     }
-                    // Row 8: Back row with 5 seats
+                    // Row 9: Back row with 5 seats
                     else if ($row_num == '9') {
                         // All 5 seats in one row
                         foreach ($row_seats as $seat) {
@@ -376,7 +665,7 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
                     }
-                    // Regular rows (2, 4, 5, 6, 7)
+                    // Regular rows (2, 4, 5, 6, 7, 8)
                     else {
                         // Left side seats (A, B)
                         foreach (array_slice($row_seats, 0, 2) as $seat) {
@@ -402,7 +691,7 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
 
-                        // Walking area (must be here in DOM order)
+                        // Walking area
                         echo '<div class="walking-area"></div>';
 
                         // Right side seats (C, D)
@@ -429,8 +718,6 @@ if ($result->num_rows > 0) {
                             echo '</div>';
                         }
                     }
-
-
                     echo '</div>';
                 }
                 ?>
@@ -558,6 +845,29 @@ if ($result->num_rows > 0) {
                 bookingSection.style.display = 'none';
             });
 
+            // Add selection styling to month checkboxes
+            document.querySelectorAll('.month-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        const checkboxInput = this.querySelector('input[type="checkbox"]');
+                        checkboxInput.checked = !checkboxInput.checked;
+                    }
+                    this.classList.toggle('selected', this.querySelector('input[type="checkbox"]').checked);
+                });
+            });
+
+            // Get location data if available
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        console.log('Location captured:', position.coords);
+                    },
+                    function(error) {
+                        console.log('Location access denied or unavailable');
+                    }
+                );
+            }
+
             // If student info is available, pre-fill the booking form
             <?php if ($student_info): ?>
                 bookingUniversityId.value = '<?php echo $student_info['university_id']; ?>';
@@ -566,7 +876,6 @@ if ($result->num_rows > 0) {
         });
     </script>
 </body>
-
 </html>
 <?php
 $conn->close();
