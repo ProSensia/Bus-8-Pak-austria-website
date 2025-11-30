@@ -201,150 +201,123 @@ if (isset($_GET['export_excel'])) {
 }
 
 // Import from Excel
-// Import from Excel
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
     if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
         $file_tmp_path = $_FILES['excel_file']['tmp_name'];
         $file_name = $_FILES['excel_file']['name'];
-        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
         
-        // Accept multiple file types
-        if (in_array($file_ext, ['xls', 'xlsx', 'csv', 'txt'])) {
+        if (pathinfo($file_name, PATHINFO_EXTENSION) === 'xls' || pathinfo($file_name, PATHINFO_EXTENSION) === 'xlsx') {
+            // Read the file
+            $file_data = file_get_contents($file_tmp_path);
+            $lines = explode("\n", $file_data);
             
-            try {
-                // Read file based on type
-                if ($file_ext === 'csv') {
-                    $data = readCSVFile($file_tmp_path);
-                } elseif (in_array($file_ext, ['xls', 'xlsx'])) {
-                    // Use PhpSpreadsheet for Excel files
-                    $data = readExcelFile($file_tmp_path, $file_ext);
+            // Get header and months
+            $headers = explode("\t", trim($lines[0]));
+            $month_columns = array_slice($headers, 5); // Skip first 5 columns (Sno, Name, University ID, Semester, Category)
+            
+            $success_count = 0;
+            $error_count = 0;
+            
+            // Process each row
+            for ($i = 1; $i < count($lines); $i++) {
+                if (empty(trim($lines[$i]))) continue;
+                
+                $row_data = explode("\t", trim($lines[$i]));
+                if (count($row_data) < 5) continue;
+                
+                $sno = $row_data[0];
+                $name = $row_data[1];
+                $university_id = $row_data[2];
+                $semester = $row_data[3];
+                $category = $row_data[4];
+                
+                // Check if student already exists
+                $check_sql = "SELECT id FROM students WHERE university_id = ?";
+                $check_stmt = $conn->prepare($check_sql);
+                $check_stmt->bind_param("s", $university_id);
+                $check_stmt->execute();
+                $check_result = $check_stmt->get_result();
+                
+                if ($check_result->num_rows > 0) {
+                    // Update existing student
+                    $student = $check_result->fetch_assoc();
+                    $student_id = $student['id'];
+                    
+                    $update_sql = "UPDATE students SET sno = ?, name = ?, semester = ?, category = ? WHERE id = ?";
+                    $update_stmt = $conn->prepare($update_sql);
+                    $update_stmt->bind_param("isssi", $sno, $name, $semester, $category, $student_id);
+                    $update_stmt->execute();
+                    $update_stmt->close();
                 } else {
-                    // For text files
-                    $data = readTextFile($file_tmp_path);
+                    // Insert new student
+                    $insert_sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
+                    $insert_stmt = $conn->prepare($insert_sql);
+                    $insert_stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
+                    
+                    if ($insert_stmt->execute()) {
+                        $student_id = $insert_stmt->insert_id;
+                    } else {
+                        $error_count++;
+                        continue;
+                    }
+                    $insert_stmt->close();
                 }
                 
-                if (empty($data) || count($data) < 2) {
-                    $action_message = "The file appears to be empty or could not be read. Please check the file format.";
-                    $action_type = "danger";
-                } else {
-                    // Process the data
-                    $result = processImportData($data, $conn);
-                    $action_message = $result['message'];
-                    $action_type = $result['type'];
+                // Process fee payments
+                foreach ($month_columns as $index => $month_name) {
+                    $month_index = $index + 5; // Adjust for first 5 columns
+                    $status = isset($row_data[$month_index]) ? $row_data[$month_index] : 'Pending';
+                    
+                    // Get month ID
+                    $month_sql = "SELECT id FROM months WHERE month_name = ?";
+                    $month_stmt = $conn->prepare($month_sql);
+                    $month_stmt->bind_param("s", $month_name);
+                    $month_stmt->execute();
+                    $month_result = $month_stmt->get_result();
+                    
+                    if ($month_result->num_rows > 0) {
+                        $month = $month_result->fetch_assoc();
+                        $month_id = $month['id'];
+                        
+                        // Check if fee payment exists
+                        $fee_check_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
+                        $fee_check_stmt = $conn->prepare($fee_check_sql);
+                        $fee_check_stmt->bind_param("ii", $student_id, $month_id);
+                        $fee_check_stmt->execute();
+                        $fee_check_result = $fee_check_stmt->get_result();
+                        
+                        if ($fee_check_result->num_rows > 0) {
+                            // Update existing fee payment
+                            $update_fee_sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
+                            $update_fee_stmt = $conn->prepare($update_fee_sql);
+                            $update_fee_stmt->bind_param("sii", $status, $student_id, $month_id);
+                            $update_fee_stmt->execute();
+                            $update_fee_stmt->close();
+                        } else {
+                            // Insert new fee payment
+                            $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
+                            $insert_fee_stmt = $conn->prepare($insert_fee_sql);
+                            $insert_fee_stmt->bind_param("iis", $student_id, $month_id, $status);
+                            $insert_fee_stmt->execute();
+                            $insert_fee_stmt->close();
+                        }
+                        $fee_check_stmt->close();
+                    }
+                    $month_stmt->close();
                 }
-            } catch (Exception $e) {
-                $action_message = "Error reading file: " . $e->getMessage();
-                $action_type = "danger";
+                $success_count++;
             }
             
+            $action_message = "Excel file imported successfully! $success_count records processed. $error_count errors.";
+            $action_type = "success";
         } else {
-            $action_message = "Please upload a valid file (.xls, .xlsx, .csv, .txt)";
+            $action_message = "Please upload a valid Excel file (.xls or .xlsx)";
             $action_type = "danger";
         }
     } else {
-        // ... (keep your existing error handling code)
+        $action_message = "Please select a file to upload";
+        $action_type = "warning";
     }
-}
-
-// Updated helper functions
-function readCSVFile($file_path) {
-    $data = [];
-    if (($handle = fopen($file_path, "r")) !== FALSE) {
-        while (($row = fgetcsv($handle, 1000, ",")) !== FALSE) {
-            // Clean the row data
-            $clean_row = array_map('trim', $row);
-            $clean_row = array_map(function($value) {
-                return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
-            }, $clean_row);
-            if (!empty(implode('', $clean_row))) {
-                $data[] = $clean_row;
-            }
-        }
-        fclose($handle);
-    }
-    return $data;
-}
-
-function readExcelFile($file_path, $file_ext) {
-    // Load PhpSpreadsheet
-    require_once 'vendor/autoload.php';
-    
-    $reader = null;
-    
-    if ($file_ext === 'xlsx') {
-        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
-    } elseif ($file_ext === 'xls') {
-        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
-    }
-    
-    if (!$reader) {
-        throw new Exception("Could not create reader for file type: $file_ext");
-    }
-    
-    $reader->setReadDataOnly(true);
-    $spreadsheet = $reader->load($file_path);
-    $worksheet = $spreadsheet->getActiveSheet();
-    
-    $data = [];
-    foreach ($worksheet->getRowIterator() as $row) {
-        $cellIterator = $row->getCellIterator();
-        $cellIterator->setIterateOnlyExistingCells(false);
-        
-        $rowData = [];
-        foreach ($cellIterator as $cell) {
-            $rowData[] = $cell->getCalculatedValue();
-        }
-        
-        // Skip completely empty rows
-        if (!empty(implode('', $rowData))) {
-            $data[] = $rowData;
-        }
-    }
-    
-    return $data;
-}
-
-function readTextFile($file_path) {
-    $data = [];
-    
-    // Read file content
-    $content = file_get_contents($file_path);
-    
-    // Detect encoding and convert to UTF-8
-    $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
-    if ($encoding && $encoding != 'UTF-8') {
-        $content = mb_convert_encoding($content, 'UTF-8', $encoding);
-    }
-    
-    // Clean content - remove non-printable characters but keep tabs and newlines
-    $content = preg_replace('/[^\x20-\x7E\n\r\t]/', '', $content);
-    
-    $lines = explode("\n", $content);
-    
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if (!empty($line)) {
-            // Handle both tab-delimited and comma-delimited
-            if (strpos($line, "\t") !== false) {
-                $row = explode("\t", $line);
-            } else {
-                $row = str_getcsv($line, ",", '"', '\\');
-            }
-            
-            // Clean each cell
-            $clean_row = array_map(function($cell) {
-                $cell = trim($cell);
-                $cell = preg_replace('/[^\x20-\x7E]/', '', $cell);
-                return $cell;
-            }, $row);
-            
-            if (!empty(implode('', $clean_row))) {
-                $data[] = $clean_row;
-            }
-        }
-    }
-    
-    return $data;
 }
 
 // Add new student with fee management
