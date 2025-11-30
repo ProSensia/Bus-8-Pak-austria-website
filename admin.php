@@ -2,6 +2,11 @@
 include 'connection.php';
 session_start();
 
+// Set query timeouts to prevent hanging
+$conn->query("SET SESSION MAX_EXECUTION_TIME=30000"); // 30 seconds
+$conn->query("SET SESSION wait_timeout=300");
+$conn->query("SET SESSION interactive_timeout=300");
+
 // Simple authentication
 $admin_username = "momin";
 $admin_password = "mominkhan@123";
@@ -157,7 +162,7 @@ if (isset($_GET['export_excel'])) {
         $months[] = $month;
     }
     
-    // Get students data
+    // Get students data with optimized query
     $students_sql = "SELECT s.* FROM students s ORDER BY s.sno";
     $students_result = $conn->query($students_sql);
     
@@ -168,11 +173,10 @@ if (isset($_GET['export_excel'])) {
     echo "\n";
     
     while ($student = $students_result->fetch_assoc()) {
-        // Get fee status for each month
+        // Get fee status for each month using optimized query
         $fee_sql = "SELECT m.month_name, fp.status 
-                   FROM fee_payments fp 
-                   JOIN months m ON fp.month_id = m.id 
-                   WHERE fp.student_id = ? 
+                   FROM months m 
+                   LEFT JOIN fee_payments fp ON fp.month_id = m.id AND fp.student_id = ? 
                    ORDER BY m.id";
         $fee_stmt = $conn->prepare($fee_sql);
         $fee_stmt->bind_param("i", $student['id']);
@@ -181,7 +185,7 @@ if (isset($_GET['export_excel'])) {
         
         $fee_status = [];
         while ($fee = $fee_result->fetch_assoc()) {
-            $fee_status[$fee['month_name']] = $fee['status'];
+            $fee_status[$fee['month_name']] = $fee['status'] ?: 'Pending';
         }
         $fee_stmt->close();
         
@@ -218,98 +222,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
             $success_count = 0;
             $error_count = 0;
             
-            // Process each row
-            for ($i = 1; $i < count($lines); $i++) {
-                if (empty(trim($lines[$i]))) continue;
-                
-                $row_data = explode("\t", trim($lines[$i]));
-                if (count($row_data) < 5) continue;
-                
-                $sno = $row_data[0];
-                $name = $row_data[1];
-                $university_id = $row_data[2];
-                $semester = $row_data[3];
-                $category = $row_data[4];
-                
-                // Check if student already exists
-                $check_sql = "SELECT id FROM students WHERE university_id = ?";
-                $check_stmt = $conn->prepare($check_sql);
-                $check_stmt->bind_param("s", $university_id);
-                $check_stmt->execute();
-                $check_result = $check_stmt->get_result();
-                
-                if ($check_result->num_rows > 0) {
-                    // Update existing student
-                    $student = $check_result->fetch_assoc();
-                    $student_id = $student['id'];
-                    
-                    $update_sql = "UPDATE students SET sno = ?, name = ?, semester = ?, category = ? WHERE id = ?";
-                    $update_stmt = $conn->prepare($update_sql);
-                    $update_stmt->bind_param("isssi", $sno, $name, $semester, $category, $student_id);
-                    $update_stmt->execute();
-                    $update_stmt->close();
-                } else {
-                    // Insert new student
-                    $insert_sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
-                    $insert_stmt = $conn->prepare($insert_sql);
-                    $insert_stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
-                    
-                    if ($insert_stmt->execute()) {
-                        $student_id = $insert_stmt->insert_id;
-                    } else {
-                        $error_count++;
-                        continue;
-                    }
-                    $insert_stmt->close();
-                }
-                
-                // Process fee payments
-                foreach ($month_columns as $index => $month_name) {
-                    $month_index = $index + 5; // Adjust for first 5 columns
-                    $status = isset($row_data[$month_index]) ? $row_data[$month_index] : 'Pending';
-                    
-                    // Get month ID
-                    $month_sql = "SELECT id FROM months WHERE month_name = ?";
-                    $month_stmt = $conn->prepare($month_sql);
-                    $month_stmt->bind_param("s", $month_name);
-                    $month_stmt->execute();
-                    $month_result = $month_stmt->get_result();
-                    
-                    if ($month_result->num_rows > 0) {
-                        $month = $month_result->fetch_assoc();
-                        $month_id = $month['id'];
-                        
-                        // Check if fee payment exists
-                        $fee_check_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
-                        $fee_check_stmt = $conn->prepare($fee_check_sql);
-                        $fee_check_stmt->bind_param("ii", $student_id, $month_id);
-                        $fee_check_stmt->execute();
-                        $fee_check_result = $fee_check_stmt->get_result();
-                        
-                        if ($fee_check_result->num_rows > 0) {
-                            // Update existing fee payment
-                            $update_fee_sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
-                            $update_fee_stmt = $conn->prepare($update_fee_sql);
-                            $update_fee_stmt->bind_param("sii", $status, $student_id, $month_id);
-                            $update_fee_stmt->execute();
-                            $update_fee_stmt->close();
-                        } else {
-                            // Insert new fee payment
-                            $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
-                            $insert_fee_stmt = $conn->prepare($insert_fee_sql);
-                            $insert_fee_stmt->bind_param("iis", $student_id, $month_id, $status);
-                            $insert_fee_stmt->execute();
-                            $insert_fee_stmt->close();
-                        }
-                        $fee_check_stmt->close();
-                    }
-                    $month_stmt->close();
-                }
-                $success_count++;
-            }
+            // Start transaction for bulk import
+            $conn->begin_transaction();
             
-            $action_message = "Excel file imported successfully! $success_count records processed. $error_count errors.";
-            $action_type = "success";
+            try {
+                // Process each row
+                for ($i = 1; $i < count($lines); $i++) {
+                    if (empty(trim($lines[$i]))) continue;
+                    
+                    $row_data = explode("\t", trim($lines[$i]));
+                    if (count($row_data) < 5) continue;
+                    
+                    $sno = $row_data[0];
+                    $name = $row_data[1];
+                    $university_id = $row_data[2];
+                    $semester = $row_data[3];
+                    $category = $row_data[4];
+                    
+                    // Check if student already exists
+                    $check_sql = "SELECT id FROM students WHERE university_id = ?";
+                    $check_stmt = $conn->prepare($check_sql);
+                    $check_stmt->bind_param("s", $university_id);
+                    $check_stmt->execute();
+                    $check_result = $check_stmt->get_result();
+                    
+                    if ($check_result->num_rows > 0) {
+                        // Update existing student
+                        $student = $check_result->fetch_assoc();
+                        $student_id = $student['id'];
+                        
+                        $update_sql = "UPDATE students SET sno = ?, name = ?, semester = ?, category = ? WHERE id = ?";
+                        $update_stmt = $conn->prepare($update_sql);
+                        $update_stmt->bind_param("isssi", $sno, $name, $semester, $category, $student_id);
+                        $update_stmt->execute();
+                        $update_stmt->close();
+                    } else {
+                        // Insert new student
+                        $insert_sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
+                        $insert_stmt = $conn->prepare($insert_sql);
+                        $insert_stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
+                        
+                        if ($insert_stmt->execute()) {
+                            $student_id = $insert_stmt->insert_id;
+                        } else {
+                            $error_count++;
+                            continue;
+                        }
+                        $insert_stmt->close();
+                    }
+                    
+                    // Process fee payments in bulk
+                    $month_status_data = [];
+                    foreach ($month_columns as $index => $month_name) {
+                        $month_index = $index + 5; // Adjust for first 5 columns
+                        $status = isset($row_data[$month_index]) ? $row_data[$month_index] : 'Pending';
+                        $month_status_data[$month_name] = $status;
+                    }
+                    
+                    // Bulk insert/update fee payments
+                    if (!empty($month_status_data)) {
+                        $month_names = array_keys($month_status_data);
+                        $placeholders = str_repeat('?,', count($month_names) - 1) . '?';
+                        
+                        // Get month IDs in one query
+                        $month_sql = "SELECT id, month_name FROM months WHERE month_name IN ($placeholders)";
+                        $month_stmt = $conn->prepare($month_sql);
+                        $month_stmt->bind_param(str_repeat('s', count($month_names)), ...$month_names);
+                        $month_stmt->execute();
+                        $month_result = $month_stmt->get_result();
+                        
+                        $month_ids = [];
+                        while ($month = $month_result->fetch_assoc()) {
+                            $month_ids[$month['month_name']] = $month['id'];
+                        }
+                        $month_stmt->close();
+                        
+                        // Use INSERT ... ON DUPLICATE KEY UPDATE for bulk operation
+                        foreach ($month_ids as $month_name => $month_id) {
+                            $status = $month_status_data[$month_name];
+                            
+                            $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) 
+                                       VALUES (?, ?, ?) 
+                                       ON DUPLICATE KEY UPDATE status = ?";
+                            $fee_stmt = $conn->prepare($fee_sql);
+                            $fee_stmt->bind_param("iiss", $student_id, $month_id, $status, $status);
+                            $fee_stmt->execute();
+                            $fee_stmt->close();
+                        }
+                    }
+                    $success_count++;
+                }
+                
+                $conn->commit();
+                $action_message = "Excel file imported successfully! $success_count records processed. $error_count errors.";
+                $action_type = "success";
+            } catch (Exception $e) {
+                $conn->rollback();
+                $action_message = "Error importing file: " . $e->getMessage();
+                $action_type = "danger";
+            }
         } else {
             $action_message = "Please upload a valid Excel file (.xls or .xlsx)";
             $action_type = "danger";
@@ -320,8 +331,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_excel'])) {
     }
 }
 
-// Handle voucher verification
+// Handle voucher verification - OPTIMIZED VERSION
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
+    $start_time = microtime(true);
+    
     $voucher_id = $_POST['voucher_id'];
     $action = $_POST['action'];
     $admin_notes = $_POST['admin_notes'];
@@ -333,76 +346,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_voucher'])) {
     $voucher_result = $voucher_stmt->get_result();
     $voucher = $voucher_result->fetch_assoc();
     
-    if ($action === 'approve') {
-        // Update fee payments status
-        $months = explode(',', $voucher['months_applied']);
-        foreach ($months as $month) {
-            $month_sql = "SELECT id FROM months WHERE month_name = ?";
-            $month_stmt = $conn->prepare($month_sql);
-            $month_stmt->bind_param("s", $month);
-            $month_stmt->execute();
-            $month_result = $month_stmt->get_result();
-            $month_data = $month_result->fetch_assoc();
+    if (!$voucher) {
+        $action_message = "Voucher not found!";
+        $action_type = "danger";
+    } else {
+        if ($action === 'approve') {
+            // OPTIMIZED: Get all month IDs in one query
+            $months = explode(',', $voucher['months_applied']);
             
-            if ($month_data) {
-                // Check if fee payment exists
-                $check_fee_sql = "SELECT id FROM fee_payments WHERE student_id = ? AND month_id = ?";
-                $check_fee_stmt = $conn->prepare($check_fee_sql);
-                $check_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                $check_fee_stmt->execute();
-                $check_fee_result = $check_fee_stmt->get_result();
+            if (!empty($months)) {
+                $placeholders = str_repeat('?,', count($months) - 1) . '?';
+                $month_sql = "SELECT id, month_name FROM months WHERE month_name IN ($placeholders)";
+                $month_stmt = $conn->prepare($month_sql);
+                $month_stmt->bind_param(str_repeat('s', count($months)), ...$months);
+                $month_stmt->execute();
+                $month_result = $month_stmt->get_result();
                 
-                if ($check_fee_result->num_rows > 0) {
-                    // Update existing
-                    $update_fee_sql = "UPDATE fee_payments SET status = 'Submitted' WHERE student_id = ? AND month_id = ?";
-                    $update_fee_stmt = $conn->prepare($update_fee_sql);
-                    $update_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                    $update_fee_stmt->execute();
-                    $update_fee_stmt->close();
-                } else {
-                    // Insert new
-                    $insert_fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, 'Submitted')";
-                    $insert_fee_stmt = $conn->prepare($insert_fee_sql);
-                    $insert_fee_stmt->bind_param("ii", $voucher['student_id'], $month_data['id']);
-                    $insert_fee_stmt->execute();
-                    $insert_fee_stmt->close();
+                $month_ids = [];
+                while ($month = $month_result->fetch_assoc()) {
+                    $month_ids[] = $month['id'];
                 }
-                $check_fee_stmt->close();
+                $month_stmt->close();
+                
+                // Use bulk INSERT ... ON DUPLICATE KEY UPDATE
+                if (!empty($month_ids)) {
+                    $conn->begin_transaction();
+                    try {
+                        // Prepare bulk insert with ON DUPLICATE KEY UPDATE
+                        $values = [];
+                        $params = [];
+                        $types = '';
+                        
+                        foreach ($month_ids as $month_id) {
+                            $values[] = "(?, ?, 'Submitted')";
+                            $params[] = $voucher['student_id'];
+                            $params[] = $month_id;
+                            $types .= 'ii';
+                        }
+                        
+                        $values_str = implode(', ', $values);
+                        $bulk_sql = "INSERT INTO fee_payments (student_id, month_id, status) 
+                                    VALUES $values_str 
+                                    ON DUPLICATE KEY UPDATE status = 'Submitted'";
+                        
+                        $bulk_stmt = $conn->prepare($bulk_sql);
+                        $bulk_stmt->bind_param($types, ...$params);
+                        $bulk_stmt->execute();
+                        $bulk_stmt->close();
+                        
+                        $conn->commit();
+                        $status = 'approved';
+                        $action_message = "Voucher approved successfully! Fee status updated for " . count($month_ids) . " months.";
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        $action_message = "Error approving voucher: " . $e->getMessage();
+                        $action_type = "danger";
+                    }
+                } else {
+                    $status = 'approved';
+                    $action_message = "Voucher approved (no months to update).";
+                }
             }
-            $month_stmt->close();
+        } else {
+            $status = 'rejected';
+            $action_message = "Voucher rejected.";
         }
         
-        $status = 'approved';
-        $action_message = "Voucher approved successfully! Fee status updated.";
-    } else {
-        $status = 'rejected';
-        $action_message = "Voucher rejected.";
+        if (!isset($action_type) || $action_type !== 'danger') {
+            // Update voucher status
+            $update_sql = "UPDATE fee_vouchers SET status = ?, admin_notes = ?, processed_date = NOW() WHERE id = ?";
+            $update_stmt = $conn->prepare($update_sql);
+            $update_stmt->bind_param("ssi", $status, $admin_notes, $voucher_id);
+            $update_stmt->execute();
+            $update_stmt->close();
+            
+            // Log admin action
+            $student_sql = "SELECT name FROM students WHERE id = ?";
+            $student_stmt = $conn->prepare($student_sql);
+            $student_stmt->bind_param("i", $voucher['student_id']);
+            $student_stmt->execute();
+            $student_result = $student_stmt->get_result();
+            $student_data = $student_result->fetch_assoc();
+            
+            $log_sql = "INSERT INTO admin_logs (admin_username, action, target_student, ip_address) VALUES (?, ?, ?, ?)";
+            $log_stmt = $conn->prepare($log_sql);
+            $log_action = "Voucher $status for " . $student_data['name'] . " (Months: " . $voucher['months_applied'] . ")";
+            $log_stmt->bind_param("ssss", $_SESSION['admin_username'], $log_action, $student_data['name'], $_SERVER['REMOTE_ADDR']);
+            $log_stmt->execute();
+            $log_stmt->close();
+            
+            $action_type = "success";
+        }
     }
     
-    // Update voucher status
-    $update_sql = "UPDATE fee_vouchers SET status = ?, admin_notes = ?, processed_date = NOW() WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("ssi", $status, $admin_notes, $voucher_id);
-    $update_stmt->execute();
-    $update_stmt->close();
-    
-    // Log admin action
-    $student_sql = "SELECT name FROM students WHERE id = ?";
-    $student_stmt = $conn->prepare($student_sql);
-    $student_stmt->bind_param("i", $voucher['student_id']);
-    $student_stmt->execute();
-    $student_result = $student_stmt->get_result();
-    $student_data = $student_result->fetch_assoc();
-    
-    $log_sql = "INSERT INTO admin_logs (admin_username, action, target_student, ip_address) VALUES (?, ?, ?, ?)";
-    $log_stmt = $conn->prepare($log_sql);
-    $log_action = "Voucher $status for " . $student_data['name'] . " (Months: " . $voucher['months_applied'] . ")";
-    $log_stmt->bind_param("ssss", $_SESSION['admin_username'], $log_action, $student_data['name'], $_SERVER['REMOTE_ADDR']);
-    $log_stmt->execute();
-    $log_stmt->close();
-    
-    $action_message = $action_message;
-    $action_type = "success";
+    $end_time = microtime(true);
+    $processing_time = round($end_time - $start_time, 3);
+    error_log("Voucher processing time: {$processing_time}s for voucher ID: {$voucher_id}");
 }
 
 // Add new student with fee management
@@ -417,30 +456,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_student'])) {
     $selected_months = isset($_POST['selected_months']) ? $_POST['selected_months'] : [];
     $month_status = isset($_POST['month_status']) ? $_POST['month_status'] : [];
     
-    $sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
+    $conn->begin_transaction();
     
-    if ($stmt->execute()) {
-        $student_id = $stmt->insert_id;
+    try {
+        $sql = "INSERT INTO students (sno, name, university_id, semester, category) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("issss", $sno, $name, $university_id, $semester, $category);
         
-        // Add fee payments for selected months
-        foreach ($selected_months as $month_id) {
-            $status = isset($month_status[$month_id]) ? $month_status[$month_id] : 'Pending';
-            $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?)";
-            $fee_stmt = $conn->prepare($fee_sql);
-            $fee_stmt->bind_param("iis", $student_id, $month_id, $status);
-            $fee_stmt->execute();
-            $fee_stmt->close();
+        if ($stmt->execute()) {
+            $student_id = $stmt->insert_id;
+            
+            // Add fee payments for selected months in bulk
+            if (!empty($selected_months)) {
+                $values = [];
+                $params = [];
+                $types = '';
+                
+                foreach ($selected_months as $month_id) {
+                    $status = isset($month_status[$month_id]) ? $month_status[$month_id] : 'Pending';
+                    $values[] = "(?, ?, ?)";
+                    $params[] = $student_id;
+                    $params[] = $month_id;
+                    $params[] = $status;
+                    $types .= 'iis';
+                }
+                
+                $values_str = implode(', ', $values);
+                $fee_sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES $values_str";
+                $fee_stmt = $conn->prepare($fee_sql);
+                $fee_stmt->bind_param($types, ...$params);
+                $fee_stmt->execute();
+                $fee_stmt->close();
+            }
+            
+            $conn->commit();
+            $action_message = "Student added successfully with fee data!";
+            $action_type = "success";
+        } else {
+            throw new Exception("Error adding student: " . $conn->error);
         }
-        
-        $action_message = "Student added successfully with fee data!";
-        $action_type = "success";
-    } else {
-        $action_message = "Error adding student: " . $conn->error;
+        $stmt->close();
+    } catch (Exception $e) {
+        $conn->rollback();
+        $action_message = $e->getMessage();
         $action_type = "danger";
     }
-    $stmt->close();
 }
 
 // Update fee status
@@ -449,9 +509,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_fee'])) {
     $month_id = $_POST['month_id'];
     $status = $_POST['status'];
     
-    $sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
+    $sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?) 
+            ON DUPLICATE KEY UPDATE status = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sii", $status, $student_id, $month_id);
+    $stmt->bind_param("iiss", $student_id, $month_id, $status, $status);
     
     if ($stmt->execute()) {
         $action_message = "Fee status updated successfully!";
@@ -469,24 +530,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_update_fees'])) 
     $selected_months = isset($_POST['bulk_selected_months']) ? $_POST['bulk_selected_months'] : [];
     $month_status = isset($_POST['bulk_month_status']) ? $_POST['bulk_month_status'] : [];
     
+    $conn->begin_transaction();
     $success = true;
-    foreach ($selected_months as $month_id) {
-        $status = isset($month_status[$month_id]) ? $month_status[$month_id] : 'Pending';
-        $sql = "UPDATE fee_payments SET status = ? WHERE student_id = ? AND month_id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sii", $status, $student_id, $month_id);
-        if (!$stmt->execute()) {
-            $success = false;
-        }
-        $stmt->close();
-    }
+    $error_message = '';
     
-    if ($success) {
-        $action_message = "Fee status updated successfully!";
-        $action_type = "success";
-    } else {
-        $action_message = "Error updating some fee status!";
-        $action_type = "warning";
+    try {
+        foreach ($selected_months as $month_id) {
+            $status = isset($month_status[$month_id]) ? $month_status[$month_id] : 'Pending';
+            $sql = "INSERT INTO fee_payments (student_id, month_id, status) VALUES (?, ?, ?) 
+                    ON DUPLICATE KEY UPDATE status = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("iiss", $student_id, $month_id, $status, $status);
+            if (!$stmt->execute()) {
+                $success = false;
+                $error_message = $conn->error;
+                break;
+            }
+            $stmt->close();
+        }
+        
+        if ($success) {
+            $conn->commit();
+            $action_message = "Fee status updated successfully for " . count($selected_months) . " months!";
+            $action_type = "success";
+        } else {
+            throw new Exception($error_message);
+        }
+    } catch (Exception $e) {
+        $conn->rollback();
+        $action_message = "Error updating fee status: " . $e->getMessage();
+        $action_type = "danger";
     }
 }
 
@@ -512,26 +585,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_month'])) {
 if (isset($_GET['delete_student'])) {
     $student_id = $_GET['delete_student'];
     
-    // First delete fee payments
-    $fee_sql = "DELETE FROM fee_payments WHERE student_id = ?";
-    $fee_stmt = $conn->prepare($fee_sql);
-    $fee_stmt->bind_param("i", $student_id);
-    $fee_stmt->execute();
-    $fee_stmt->close();
+    $conn->begin_transaction();
     
-    // Then delete student
-    $sql = "DELETE FROM students WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $student_id);
-    
-    if ($stmt->execute()) {
-        $action_message = "Student deleted successfully!";
-        $action_type = "success";
-    } else {
-        $action_message = "Error deleting student: " . $conn->error;
+    try {
+        // First delete fee payments
+        $fee_sql = "DELETE FROM fee_payments WHERE student_id = ?";
+        $fee_stmt = $conn->prepare($fee_sql);
+        $fee_stmt->bind_param("i", $student_id);
+        $fee_stmt->execute();
+        $fee_stmt->close();
+        
+        // Then delete student
+        $sql = "DELETE FROM students WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $student_id);
+        
+        if ($stmt->execute()) {
+            $conn->commit();
+            $action_message = "Student deleted successfully!";
+            $action_type = "success";
+        } else {
+            throw new Exception("Error deleting student: " . $conn->error);
+        }
+        $stmt->close();
+    } catch (Exception $e) {
+        $conn->rollback();
+        $action_message = $e->getMessage();
         $action_type = "danger";
     }
-    $stmt->close();
 }
 
 // Remove seat booking
@@ -596,9 +677,20 @@ while ($month = $months_result->fetch_assoc()) {
     $months[] = $month;
 }
 
-// Fetch all students with their fee status
-$students_sql = "SELECT s.* FROM students s ORDER BY s.sno";
+// Fetch all students with their fee status using optimized query
+$students_sql = "SELECT s.* FROM students s ORDER BY s.sno LIMIT 1000"; // Added LIMIT for safety
 $students_result = $conn->query($students_sql);
+
+// Pre-fetch all fee statuses in one query for better performance
+$all_fees_sql = "SELECT fp.student_id, m.id as month_id, m.month_name, fp.status 
+                 FROM months m 
+                 LEFT JOIN fee_payments fp ON m.id = fp.month_id 
+                 ORDER BY fp.student_id, m.id";
+$all_fees_result = $conn->query($all_fees_sql);
+$all_fee_status = [];
+while ($fee = $all_fees_result->fetch_assoc()) {
+    $all_fee_status[$fee['student_id']][$fee['month_id']] = $fee['status'] ?: 'Pending';
+}
 
 // Fetch all booked seats
 $seats_sql = "SELECT * FROM seats WHERE is_booked = TRUE ORDER BY seat_number";
@@ -667,9 +759,29 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
             font-size: 0.7em;
             margin-left: 5px;
         }
+        .processing-indicator {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 9999;
+        }
     </style>
 </head>
 <body>
+    <!-- Processing Indicator -->
+    <div id="processingIndicator" class="processing-indicator">
+        <div class="text-center">
+            <div class="spinner-border text-primary mb-3" role="status"></div>
+            <p>Processing voucher, please wait...</p>
+        </div>
+    </div>
+
     <div class="admin-container">
         <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -728,10 +840,10 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                         </div>
                         <div class="card-body">
                             <p>Import student data from Excel file using the template format.</p>
-                            <form method="POST" enctype="multipart/form-data">
+                            <form method="POST" enctype="multipart/form-data" id="importForm">
                                 <div class="input-group">
                                     <input type="file" class="form-control" name="excel_file" accept=".xls,.xlsx" required>
-                                    <button type="submit" name="import_excel" class="btn btn-primary">
+                                    <button type="submit" name="import_excel" class="btn btn-primary" id="importBtn">
                                         <i class="fas fa-upload"></i> Import
                                     </button>
                                 </div>
@@ -797,6 +909,9 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                         <h5 class="card-title mb-0"><i class="fas fa-list"></i> Student List & Fee Management</h5>
                     </div>
                     <div class="card-body">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-info-circle"></i> Showing first 1000 students. Use export/import for larger datasets.
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead class="table-dark">
@@ -813,23 +928,7 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php while ($student = $students_result->fetch_assoc()): 
-                                        // Get fee status for this student
-                                        $fee_sql = "SELECT m.id, m.month_name, fp.status 
-                                                   FROM fee_payments fp 
-                                                   RIGHT JOIN months m ON fp.month_id = m.id AND fp.student_id = ?
-                                                   ORDER BY m.id";
-                                        $fee_stmt = $conn->prepare($fee_sql);
-                                        $fee_stmt->bind_param("i", $student['id']);
-                                        $fee_stmt->execute();
-                                        $fee_result = $fee_stmt->get_result();
-                                        
-                                        $fee_status = [];
-                                        while ($fee = $fee_result->fetch_assoc()) {
-                                            $fee_status[$fee['id']] = $fee['status'] ?: 'Pending';
-                                        }
-                                        $fee_stmt->close();
-                                    ?>
+                                    <?php while ($student = $students_result->fetch_assoc()): ?>
                                     <tr>
                                         <td><?php echo $student['sno']; ?></td>
                                         <td><?php echo $student['name']; ?></td>
@@ -839,7 +938,7 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                                         
                                         <!-- Fee Status Columns -->
                                         <?php foreach ($months as $month): 
-                                            $status = isset($fee_status[$month['id']]) ? $fee_status[$month['id']] : 'Pending';
+                                            $status = isset($all_fee_status[$student['id']][$month['id']]) ? $all_fee_status[$student['id']][$month['id']] : 'Pending';
                                             $badge_class = $status === 'Submitted' ? 'bg-success' : 'bg-danger';
                                         ?>
                                         <td>
@@ -894,7 +993,8 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                                                FROM fee_vouchers fv 
                                                JOIN students s ON fv.student_id = s.id 
                                                WHERE fv.status = 'pending' 
-                                               ORDER BY fv.submission_date ASC";
+                                               ORDER BY fv.submission_date ASC 
+                                               LIMIT 100";
                         $pending_vouchers_result = $conn->query($pending_vouchers_sql);
                         ?>
                         
@@ -941,7 +1041,7 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                                             </a>
                                         </td>
                                         <td>
-                                            <form method="POST" class="row g-2">
+                                            <form method="POST" class="row g-2 voucher-form">
                                                 <input type="hidden" name="voucher_id" value="<?php echo $voucher['id']; ?>">
                                                 <div class="col-12">
                                                     <textarea name="admin_notes" class="form-control form-control-sm" 
@@ -949,13 +1049,13 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
                                                 </div>
                                                 <div class="col-6">
                                                     <button type="submit" name="verify_voucher" value="approve" 
-                                                            class="btn btn-success btn-sm w-100">
+                                                            class="btn btn-success btn-sm w-100 verify-btn">
                                                         <i class="fas fa-check"></i> Approve
                                                     </button>
                                                 </div>
                                                 <div class="col-6">
                                                     <button type="submit" name="verify_voucher" value="reject" 
-                                                            class="btn btn-danger btn-sm w-100">
+                                                            class="btn btn-danger btn-sm w-100 verify-btn">
                                                         <i class="fas fa-times"></i> Reject
                                                     </button>
                                                 </div>
@@ -1437,11 +1537,38 @@ $pending_count = $pending_count_result->fetch_assoc()['count'];
             });
         }
 
+        // Voucher verification with loading indicator
+        document.querySelectorAll('.verify-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                const form = this.closest('.voucher-form');
+                const voucherId = form.querySelector('input[name="voucher_id"]').value;
+                
+                // Show processing indicator
+                document.getElementById('processingIndicator').style.display = 'block';
+                
+                // Add small delay to ensure UI updates
+                setTimeout(() => {
+                    form.submit();
+                }, 100);
+            });
+        });
+
+        // Import form with loading indicator
+        document.getElementById('importForm').addEventListener('submit', function(e) {
+            document.getElementById('importBtn').disabled = true;
+            document.getElementById('importBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+        });
+
         // Logout confirmation
         document.querySelector('a[href="?logout"]').addEventListener('click', function(e) {
             if (!confirm('Are you sure you want to logout?')) {
                 e.preventDefault();
             }
+        });
+
+        // Hide processing indicator when page loads
+        window.addEventListener('load', function() {
+            document.getElementById('processingIndicator').style.display = 'none';
         });
     </script>
 </body>
